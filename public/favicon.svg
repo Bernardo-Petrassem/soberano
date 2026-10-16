@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Soberano">
+  <rect width="32" height="32" rx="6" fill="#1c1915"/>
+  <g fill="#c6a15b">
+    <rect x="14" y="3" width="4" height="8"/>
+    <rect x="10" y="5" width="12" height="4"/>
+    <rect x="8" y="12" width="16" height="3"/>
+    <polygon points="11,15 21,15 24,26 8,26"/>
+    <rect x="6" y="26" width="20" height="3"/>
+  </g>
+</svg>

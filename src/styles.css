@@ -1,0 +1,94 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Outfit:wght@380;500;640&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --color-ink: #1c1915;
+  --color-panel: #262119;
+  --color-panel-2: #322a22;
+  --color-line: #44392e;
+  --color-cream: #f3ead7;
+  --color-muted: #b7aa96;
+  --color-brass: #c6a15b;
+  --color-brass-2: #e1c48a;
+  --color-felt: #1f4d3a;
+  --color-felt-2: #3d8f68;
+  --color-blood: #c4543a;
+  --color-good: #8fb573;
+  --color-light-sq: #f0d9b5;
+  --color-dark-sq: #b58863;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-ink);
+    color: var(--color-cream);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-line);
+    background: var(--color-panel-2);
+    color: var(--color-cream);
+    font-weight: 500;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .btn-primary {
+    background: var(--color-brass);
+    color: var(--color-ink);
+    border-color: transparent;
+  }
+  .nav-link {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-muted);
+  }
+  .nav-link[aria-current="page"] {
+    background: var(--color-panel-2);
+    color: var(--color-cream);
+  }
+  .field {
+    display: block;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-line);
+    background: var(--color-ink);
+    color: var(--color-cream);
+  }
+  .field:focus {
+    border-color: var(--color-brass);
+    outline: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

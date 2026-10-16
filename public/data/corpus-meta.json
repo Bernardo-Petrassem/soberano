@@ -1,0 +1,9 @@
+{
+  "openings": 3865,
+  "puzzles": 4900,
+  "scanned": 198919,
+  "kept": 4900,
+  "openingSource": "https://github.com/lichess-org/chess-openings",
+  "puzzleSource": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+  "note": "Amostra estratificada da base pública. A Biblioteca importa o ficheiro completo."
+}

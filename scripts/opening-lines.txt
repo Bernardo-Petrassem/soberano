@@ -1,0 +1,129 @@
+C50|Abertas|Giuoco Piano|e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6|Peça de centro calma: prepare d3-d4 e não abra cedo de mais.
+C54|Abertas|Giuoco Piano, centro|e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+
+C55|Abertas|Dois cavalos|e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5|O ataque Ng5 exige precisão. d5 é o antídoto.
+C57|Abertas|Fígado frito|e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Nxd5 Nxf7|Sacrifício clássico em f7. Veja se o rei fica exposto.
+C51|Abertas|Gambito Evans|e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4
+C52|Abertas|Evans aceite, Ba5|e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5
+C30|Abertas|Gambito do rei|e4 e5 f4 exf4 Nf3 g5 h4 g4 Ne5|Ataque romântico. O rei branco fica no centro se o gambito for aceite.
+C25|Abertas|Gambito de Viena|e4 e5 Nc3 Nf6 f4 d5 fxe5 Nxe4 Nf3
+C44|Abertas|Escocesa|e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5 Be3 Qf6 c3 Nge7
+C45|Abertas|Escocesa, Nf6|e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nc3 Bb4
+C44|Abertas|Gambito escocês|e4 e5 Nf3 Nc6 d4 exd4 Bc4 Bc5 c3 Nf6
+C44|Abertas|Gambito Göring|e4 e5 Nf3 Nc6 d4 exd4 c3
+C41|Abertas|Defesa Philidor|e4 e5 Nf3 d6 d4 exd4 Nxd4 Nf6 Nc3 Be7
+C42|Abertas|Defesa Petrov|e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3|Simetria que se rompe em d4. Aprenda a não ficar com o cavalo preso.
+C42|Abertas|Petrov, Cochrane|e4 e5 Nf3 Nf6 Nxe5 d6 Nxf7
+C46|Abertas|Quatro cavalos|e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6
+C44|Abertas|Ponziani|e4 e5 Nf3 Nc6 c3 Nf6 d4
+C21|Abertas|Jogo do centro|e4 e5 d4 exd4 Qxd4 Nc6 Qe3 Nf6
+C21|Abertas|Gambito dinamarquês|e4 e5 d4 exd4 c3 dxc3 Bc4
+C23|Abertas|Abertura do bispo|e4 e5 Bc4 Nf6 d3 Bc5 Nc3 d6
+C40|Abertas|Gambito letão|e4 e5 Nf3 f5
+C40|Abertas|Gambito do elefante|e4 e5 Nf3 d5
+C42|Abertas|Armadilha de Stafford|e4 e5 Nf3 Nf6 Nxe5 Nc6
+C57|Abertas|Traxler|e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 Bc5
+C50|Abertas|Armadilha de Legal|e4 e5 Nf3 d6 Bc4 Bg4 Nc3 Nc6 Nxe5
+C60|Abertas|Ruy López|e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O|A abertura mais estudada. Brancas preparam d4; pretas contra-atacam com c5.
+C65|Abertas|Berlim|e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4 d4 Nd6 Bxc6 dxc6 dxe5 Nf5 Qxd8+ Kxd8|Final cedo. O rei preto no centro é seguro se a estrutura aguentar.
+C68|Abertas|Ruy de troca|e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 O-O Bg4
+C89|Abertas|Ataque Marshall|e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 d5|Gambito de peão por ataque. Não aceite d5 sem conhecer a tática.
+C80|Abertas|Ruy aberta|e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Nxe4
+C63|Abertas|Schliemann|e4 e5 Nf3 Nc6 Bb5 f5
+C70|Abertas|Ruy, Norwegian|e4 e5 Nf3 Nc6 Bb5 a6 Ba4 b5 Bb3 Na5
+C60|Abertas|Ruy, Cozio|e4 e5 Nf3 Nc6 Bb5 Nge7
+C62|Abertas|Ruy, Steinitz|e4 e5 Nf3 Nc6 Bb5 d6
+C70|Abertas|Ruy, Steinitz moderna|e4 e5 Nf3 Nc6 Bb5 a6 Ba4 d6
+C61|Abertas|Ruy, Bird|e4 e5 Nf3 Nc6 Bb5 Nd4
+B20|Semiabertas|Siciliana, Alapin|e4 c5 c3 Nf6 e5 Nd5 d4 cxd4 Nf3
+B21|Semiabertas|Gambito Smith-Morra|e4 c5 d4 cxd4 c3 dxc3 Nxc3 Nc6
+B21|Semiabertas|Morra recusado|e4 c5 d4 cxd4 c3 d3
+B20|Semiabertas|Gambito da ala|e4 c5 b4
+B23|Semiabertas|Grande Prémio|e4 c5 Nc3 Nc6 f4 g6 Nf3 Bg7
+B23|Semiabertas|Siciliana fechada|e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 d6
+B27|Semiabertas|Hiperacelerada|e4 c5 Nf3 g6 d4 cxd4 Nxd4 Bg7
+B30|Semiabertas|Rossolimo|e4 c5 Nf3 Nc6 Bb5 g6
+B51|Semiabertas|Moscovo|e4 c5 Nf3 d6 Bb5+ Bd7
+B32|Semiabertas|Kalashnikov|e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 e5 Nb5 d6
+B33|Semiabertas|Sveshnikov|e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5 Ndb5 d6|Peão atrasado em d6, bispo negro e jogo dinâmico.
+B44|Semiabertas|Taimanov|e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Qc7
+B41|Semiabertas|Kan|e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Bd3
+B40|Semiabertas|Pin|e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nf6 Nc3 Bb4
+B28|Semiabertas|O'Kelly|e4 c5 Nf3 a6
+B34|Semiabertas|Dragão acelerado|e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 g6 c4 Bg7 Be3 Nf6 Nc3
+B70|Semiabertas|Dragão|e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6|Corrida de ataques: brancas na ala do rei, pretas na coluna c.
+B80|Semiabertas|Scheveningen|e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 Be2 a6 O-O Be7
+B90|Semiabertas|Najdorf|e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6|Flexível. O peão em a6 prepara e5 ou b5.
+B90|Semiabertas|Najdorf, ataque inglês|e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3
+B97|Semiabertas|Najdorf, peão envenenado|e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5 e6 f4 Qb6
+B56|Semiabertas|Siciliana clássica|e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6
+C00|Francesa|Francesa de avanço|e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6 a3|Cunha em e5. Pretas minam com c5 e pressionam d4.
+C05|Francesa|Francesa Tarrasch|e4 e6 d4 d5 Nd2 c5
+C15|Francesa|Francesa Winawer|e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3|Bispos de cores opostas e peões dobrados. Plano claro dos dois lados.
+C11|Francesa|Francesa clássica|e4 e6 d4 d5 Nc3 Nf6
+C11|Francesa|Francesa Steinitz|e4 e6 d4 d5 Nc3 Nf6 e5 Nfd7 f4 c5
+C12|Francesa|McCutcheon|e4 e6 d4 d5 Nc3 Nf6 Bg5 Bb4
+C10|Francesa|Francesa Rubinstein|e4 e6 d4 d5 Nc3 dxe4 Nxe4 Nd7 Nf3 Ngf6
+C01|Francesa|Francesa de troca|e4 e6 d4 d5 exd5 exd5 Bd3
+B12|Caro-Kann|Caro de avanço|e4 c6 d4 d5 e5 Bf5|O bispo sai antes de e6. Brancas ganham espaço; pretas solidez.
+B18|Caro-Kann|Caro clássica|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7
+B13|Caro-Kann|Ataque Panov|e4 c6 d4 d5 exd5 cxd5 c4 Nf6 Nc3 e6
+B13|Caro-Kann|Caro de troca|e4 c6 d4 d5 exd5 cxd5 Bd3
+B12|Caro-Kann|Fantasia|e4 c6 d4 d5 f3 dxe4 fxe4 e5
+B01|Semiabertas|Escandinava|e4 d5 exd5 Qxd5 Nc3 Qa5
+B01|Semiabertas|Escandinava moderna|e4 d5 exd5 Nf6 d4 Nxd5
+B01|Semiabertas|Islandesa|e4 d5 exd5 Nf6 c4 c6
+B02|Semiabertas|Alekhine|e4 Nf6 e5 Nd5 d4 d6 Nf3
+B03|Semiabertas|Alekhine, quatro peões|e4 Nf6 e5 Nd5 d4 d6 c4 Nb6 f4
+B07|Semiabertas|Pirc|e4 d6 d4 Nf6 Nc3 g6
+B09|Semiabertas|Pirc austríaca|e4 d6 d4 Nf6 Nc3 g6 f4
+B06|Semiabertas|Moderna|e4 g6 d4 Bg7 Nc3 d6
+B00|Semiabertas|Defesa Owen|e4 b6 d4 Bb7 Bd3 e6
+B00|Semiabertas|Defesa Nimzowitsch|e4 Nc6 d4 d5
+D06|Fechadas|Gambito da dama recusado|d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 Nbd7 Rc1 c6|Estrutura clássica. Pretas libertam o bispo de luz com e5 ou c5.
+D35|Fechadas|Troca do Gambito da dama|d4 d5 c4 e6 Nc3 Nf6 cxd5 exd5 Bg5|Carlsbad: minoria b4-b5 para brancas, peça de dama para pretas.
+D53|Fechadas|QGD Tartakower|d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4 b6
+D56|Fechadas|Defesa Lasker|d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4 Ne4
+D52|Fechadas|Cambridge Springs|d4 d5 c4 e6 Nc3 Nf6 Bg5 Nbd7 e3 c6 Nf3 Qa5
+D32|Fechadas|Defesa Tarrasch|d4 d5 c4 e6 Nc3 c5
+D20|Fechadas|Gambito da dama aceite|d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4
+D10|Fechadas|Eslava|d4 d5 c4 c6 Nf3 Nf6 Nc3
+D45|Fechadas|Semi-eslava|d4 d5 c4 c6 Nf3 Nf6 Nc3 e6
+D48|Fechadas|Sistema Meran|d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4 Bxc4
+D44|Fechadas|Sistema Botvinnik|d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 Bg5 dxc4
+D07|Fechadas|Defesa Chigorin|d4 d5 c4 Nc6
+D08|Fechadas|Contragambito Albin|d4 d5 c4 e5
+D02|Fechadas|Sistema Londres|d4 d5 Nf3 Nf6 Bf4 e6 e3 c5 c3|Sólido e repetível. O bispo de dama sai antes do peão e.
+D05|Fechadas|Sistema Colle|d4 d5 Nf3 Nf6 e3 e6 Bd3 c5 b3
+D00|Fechadas|Londres Jobava|d4 d5 Nc3 Nf6 Bf4
+A45|Índias|Trompowsky|d4 Nf6 Bg5 Ne4 Bf4
+A46|Índias|Ataque Torre|d4 Nf6 Nf3 e6 Bg5
+A40|Fechadas|Gambito Englund|d4 e5
+D00|Fechadas|Báltica|d4 d5 c4 Bf5
+E20|Índias|Nimzoíndia|d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5 Nf3 c5|O cravo em b4 luta pelo centro e4.
+E32|Índias|Nimzoíndia clássica|d4 Nf6 c4 e6 Nc3 Bb4 Qc2
+E11|Índias|Bogoíndia|d4 Nf6 c4 e6 Nf3 Bb4+ Bd2
+E14|Índias|Índia da dama|d4 Nf6 c4 e6 Nf3 b6 g3 Bb7 Bg2 Be7
+E60|Índias|Índia do rei|d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7|Muralha de peões e ataque na ala do rei com f5.
+E81|Índias|Índia do rei, Sämisch|d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3
+E76|Índias|Índia do rei, quatro peões|d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f4
+D80|Índias|Grünfeld|d4 Nf6 c4 g6 Nc3 d5
+D85|Índias|Grünfeld de troca|d4 Nf6 c4 g6 Nc3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 Bg7 Nf3 c5|Pretas atacam o centro branco de longe.
+A65|Índias|Benoni moderna|d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6 e4 g6
+A57|Índias|Gambito Benko|d4 Nf6 c4 c5 d5 b5 cxb5 a6 bxa6 Bxa6|Peão a menos, colunas a e b para as pretas.
+E10|Índias|Gambito Blumenfeld|d4 Nf6 c4 e6 Nf3 c5 d5 b5
+E00|Índias|Catalã|d4 Nf6 c4 e6 g3 d5 Bg2 Be7 Nf3 O-O
+E04|Índias|Catalã aberta|d4 Nf6 c4 e6 g3 d5 Bg2 dxc4 Nf3
+A52|Índias|Gambito de Budapeste|d4 Nf6 c4 e5
+A41|Índias|Índia antiga|d4 Nf6 c4 d6 Nc3 Nbd7 e4 e5
+A80|Índias|Defesa holandesa|d4 f5 c4 Nf6 g3 e6 Bg2 Be7 Nf3 O-O O-O d6
+A87|Índias|Holandesa Leningrado|d4 f5 g3 Nf6 Bg2 g6
+A90|Índias|Muralha de pedra|d4 d5 c4 e6 Nc3 f5
+A10|Flancos|Inglesa|c4 e5 Nc3 Nf6 Nf3 Nc6 g3 d5 cxd5 Nxd5 Bg2
+A26|Flancos|Inglesa simétrica|c4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 Nf3 Nf6 O-O O-O
+A26|Flancos|Inglesa Botvinnik|c4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 e5 e4
+A05|Flancos|Reti|Nf3 d5 c4 e6 g3 Nf6 Bg2 Be7 O-O O-O b3
+A07|Flancos|Ataque índio do rei|Nf3 d5 g3 Nf6 Bg2 e6 O-O Be7 d3 O-O Nbd2 c5 e4|Sistema que serve contra quase tudo. e4 é o golpe central.
+A02|Flancos|Abertura Bird|f4 d5 Nf3 g6 e3 Bg7 Be2 Nf6 O-O
+A01|Flancos|Abertura Larsen|b3 e5 Bb2 Nc6 e3 d5 Bb5
+A00|Flancos|Abertura Sokolsky|b4 e5 Bb2
+A00|Flancos|Grob|g4 d5 Bg2
