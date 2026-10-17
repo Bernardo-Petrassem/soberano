@@ -1,59 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { Color, Role } from "chessops/types";
 import { piecesOf } from "@/lib/chess/logic";
+import { publicUrl } from "@/lib/chess/public-url";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
+const ROLE_CHAR: Record<Role, string> = { king: "K", queen: "Q", rook: "R", bishop: "B", knight: "N", pawn: "P" };
 
 function Glyph({ role, color }: { role: Role; color: Color }) {
-  const white = color === "white";
-  const fill = white ? "#fffaf2" : "#1a1612";
-  const ink = white ? "#2a2118" : "#e7dcc8";
+  const src = publicUrl(`/pieces/${color === "white" ? "w" : "b"}${ROLE_CHAR[role]}.svg`);
   return (
-    <svg viewBox="0 0 45 45" className="pointer-events-none h-full w-full drop-shadow-[0_1px_1px_rgb(0_0_0/0.55)]" aria-hidden="true">
-      <g fill={fill} stroke={ink} strokeWidth={white ? 1.55 : 1.25} strokeLinejoin="round" strokeLinecap="round">
-        {role === "king" && (
-          <>
-            <path d="M22.5 11.6V6M20 8h5" fill="none" />
-            <path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" />
-            <path d="M12.5 37c5.5 3.5 14.5 3.5 20 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-2.5-7.5-12-10.5-16-4-3 6 6 10.5 6 10.5z" />
-            <path d="M12.5 30c5.5-3 14.5-3 20 0M12.5 33.5c5.5-3 14.5-3 20 0M12.5 37c5.5-3 14.5-3 20 0" fill="none" />
-          </>
-        )}
-        {role === "queen" && (
-          <>
-            <path d="M8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm9.5 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM24 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm9.5 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-            <path d="M9 26c8.5 2 10 4 11.5 5 1.5-1 3-3 11.5-5-6 10-8 12-11.5 12S15 36 9 26z" />
-            <path d="M15 30c4-2 11-2 15 0" fill="none" />
-            <path d="M9.5 35.5c6 3 20 3 26 0v-3.5c-8 3-18 3-26 0z" />
-          </>
-        )}
-        {role === "rook" && (
-          <>
-            <path d="M9 39h27v-3H9zM12 36V14h6v5h3v-5h6v5h3v-5h6v22" />
-            <path d="M12 14h6M21 14h6M30 14h6M14 39h17" fill="none" />
-          </>
-        )}
-        {role === "bishop" && (
-          <>
-            <path d="M9 36c3.4 2.5 10 3.5 13.5 2 3.5 1.5 10.1.5 13.5-2 0 0 1.6.5 2.5 0 .8 1.5.5 3.5.5 3.5-5 2-17 2-22.5 0 0 0-.3-2 .5-3.5 1-.5 2.5 0 2.5 0z" />
-            <path d="M15 32c2.5 1.5 12.5 1.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5 6-15.5-6 4-5.5 14-5.5 14 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z" />
-            <path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z" />
-            <path d="M17.5 26h10M15 30h15" fill="none" />
-          </>
-        )}
-        {role === "knight" && (
-          <path d="M22 10c10.5 1 16.5 8 16 16 0 0 .5 1.5 0 2.5-1 1.5-2 2-2 2l-2 3h-6l1.5-4.5-4 3-1.5 4.5H9s1-4.5 2.5-7.5S14 18 14 15c0-2 1.5-4 3-5 1-.5 3-1 5 0zM14 14c-2 1-3 4-3 4" />
-        )}
-        {role === "pawn" && (
-          <>
-            <path d="M22.5 9a4 4 0 1 1-.01 8.01A4 4 0 0 1 22.5 9z" />
-            <path d="M17 36.5c1.5-5 2.5-8 2.5-12.5S16 18 22.5 18 28 22 28 24s1 7.5 2.5 12.5" />
-            <path d="M12.5 39h20" fill="none" />
-            <path d="M12.5 36.5h20c-1.5 1.5-6 2.5-10 2.5s-8.5-1-10-2.5z" />
-          </>
-        )}
-      </g>
-    </svg>
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      className="pointer-events-none h-full w-full select-none drop-shadow-[0_1px_1px_rgb(0_0_0/0.45)]"
+    />
   );
 }
 
@@ -118,11 +79,13 @@ export function Board({
   const [marks, setMarks] = useState<string[]>([]);
   const arrowFrom = useRef<string | null>(null);
   const hold = useRef<number | 0>(0);
+  const leftStreak = useRef(0);
   const pieces = piecesOf(fen);
 
   useEffect(() => {
     setSelected(null);
     setPromo(null);
+    setDrag(null);
     setArrows([]);
     setMarks([]);
   }, [fen]);
@@ -150,6 +113,7 @@ export function Board({
     if (!square) return;
     if (e.button === 2 || e.pointerType === "touch") {
       if (e.button === 2) {
+        leftStreak.current = 0;
         arrowFrom.current = square;
         e.preventDefault();
         return;
@@ -160,6 +124,12 @@ export function Board({
       }, 380);
     }
     if (e.button !== 0) return;
+    leftStreak.current += 1;
+    if (leftStreak.current >= 2) {
+      leftStreak.current = 0;
+      setArrows([]);
+      setMarks([]);
+    }
     if (editRole && onEdit) return;
     const piece = pieceAt(square);
     if (selected && dests[selected]?.includes(square)) {
@@ -211,7 +181,8 @@ export function Board({
       const name = `${FILES[file]}${rank + 1}`;
       const dark = (file + rank) % 2 === 0;
       const piece = pieceAt(name);
-      const isLast = lastMove?.includes(name);
+      const fromSq = lastMove?.[0] === name;
+      const toSq = lastMove?.[1] === name;
       const isDest = selected ? dests[selected]?.includes(name) : false;
       const isSel = selected === name;
       const marked = marks.includes(name);
@@ -225,7 +196,8 @@ export function Board({
             background: dark ? "var(--color-dark-sq)" : "var(--color-light-sq)",
           }}
         >
-          {isLast && <span className="absolute inset-0" style={{ background: "color-mix(in srgb, var(--color-brass) 42%, transparent)" }} />}
+          {fromSq && <span className="absolute inset-0" style={{ background: "rgba(255,255,255,0.72)" }} />}
+          {toSq && <span className="absolute inset-0" style={{ background: "rgba(255,214,40,0.78)" }} />}
           {isSel && <span className="absolute inset-0" style={{ boxShadow: "inset 0 0 0 3px var(--color-brass)" }} />}
           {marked && <span className="absolute inset-1 rounded-full" style={{ background: "color-mix(in srgb, var(--color-blood) 45%, transparent)" }} />}
           {checkSquare === name && (

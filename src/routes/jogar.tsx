@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Shell, Panel } from "@/components/chess/shell";
+import { Choice } from "@/components/chess/choice";
 import { LiveGame, type LiveConfig } from "@/components/chess/live-game";
 import { corpus, type Opening } from "@/lib/chess/corpus";
 import { BOTS, fenFrom960, START_FEN, TIME_CONTROLS, type TimeId } from "@/lib/chess/logic";
@@ -62,45 +63,47 @@ function Jogar() {
       {!game ? (
         <Panel className="mx-auto max-w-xl">
           <h1 className="font-display text-3xl">Nova partida</h1>
-          <label className="mt-4 block text-sm text-muted">
-            Adversário
-            <select className="field mt-1" value={botId} onChange={(e) => setBotId(e.target.value as typeof botId)}>
-              <option value="local">Duas pessoas, neste ecrã</option>
-              {BOTS.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                  {b.elo ? ` · ~${b.elo}` : " · força total"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="text-sm text-muted">
-              Cor
-              <select className="field mt-1" value={color} onChange={(e) => setColor(e.target.value as typeof color)}>
-                <option value="white">Brancas</option>
-                <option value="black">Pretas</option>
-                <option value="random">Sorteio</option>
-              </select>
-            </label>
-            <label className="text-sm text-muted">
-              Tempo
-              <select className="field mt-1" value={tc} onChange={(e) => setTc(e.target.value as TimeId)}>
-                {TIME_CONTROLS.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="mt-4">
+            <Choice
+              label="Adversário"
+              value={botId}
+              onChange={setBotId}
+              options={[
+                { value: "local", label: "Duas pessoas, neste ecrã" },
+                ...BOTS.map((b) => ({
+                  value: b.id,
+                  label: b.elo ? `${b.name} · ${b.elo}` : `${b.name} · força total`,
+                })),
+              ]}
+            />
           </div>
-          <label className="mt-3 block text-sm text-muted">
-            Variante
-            <select className="field mt-1" value={variant} onChange={(e) => setVariant(e.target.value as typeof variant)}>
-              <option value="std">Clássico</option>
-              <option value="960">Xadrez 960</option>
-            </select>
-          </label>
+          <div className="mt-3 space-y-3">
+            <Choice
+              label="Cor"
+              value={color}
+              onChange={setColor}
+              options={[
+                { value: "white", label: "Brancas" },
+                { value: "black", label: "Pretas" },
+                { value: "random", label: "Sorteio" },
+              ]}
+            />
+            <Choice
+              label="Tempo"
+              value={tc}
+              onChange={setTc}
+              options={TIME_CONTROLS.map((t) => ({ value: t.id, label: t.label }))}
+            />
+            <Choice
+              label="Variante"
+              value={variant}
+              onChange={setVariant}
+              options={[
+                { value: "std", label: "Clássico" },
+                { value: "960", label: "Xadrez 960" },
+              ]}
+            />
+          </div>
           {variant === "960" && (
             <label className="mt-3 block text-sm text-muted">
               Posição {idx} (518 é a clássica)

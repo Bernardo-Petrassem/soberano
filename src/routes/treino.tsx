@@ -5,12 +5,16 @@ import { makeSquare } from "chessops/util";
 import type { Color, Role } from "chessops/types";
 import { Shell, Panel } from "@/components/chess/shell";
 import { Board } from "@/components/chess/board";
+import { Choice } from "@/components/chess/choice";
 import { LiveGame } from "@/components/chess/live-game";
 import { PuzzleRun } from "@/components/chess/puzzle-run";
+import { formatWatch, useStopwatch } from "@/components/chess/stopwatch";
 import { corpus, type Opening, type Puzzle } from "@/lib/chess/corpus";
+import { generateEndgame, type EndgameId } from "@/lib/chess/endgames";
 import {
   BOTS,
   ENDGAMES,
+  MARK_CLASS,
   START_FEN,
   checkedKing,
   destsOf,
@@ -19,7 +23,11 @@ import {
   loadFen,
   needsPromotion,
   sanAndUci,
+  ucisFromSans,
+  type Mark,
 } from "@/lib/chess/logic";
+import { reviewLine } from "@/lib/chess/review";
+import { useVault } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/treino")({ component: Treino });
 
@@ -33,7 +41,11 @@ function Treino() {
   const [picked, setPicked] = useState<Opening | null>(null);
   const [side, setSide] = useState<Color>("white");
   const [drill, setDrill] = useState<(typeof ENDGAMES)[number] | null>(null);
+  const [fen, setFen] = useState<string | null>(null);
+  const [spin, setSpin] = useState(0);
   const [solo, setSolo] = useState(false);
+  const [botId, setBotId] = useState<(typeof BOTS)[number]["id"]>("amador");
+  const [humanSide, setHumanSide] = useState<"white" | "black" | "turn">("turn");
 
   useEffect(() => {
     void corpus().then((c) => {
@@ -83,14 +95,21 @@ function Treino() {
           <div>
             {picked ? (
               <>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="mb-3">
                   <h2 className="font-display text-2xl">
                     {picked.eco} {picked.name}
                   </h2>
-                  <select className="field w-auto" value={side} onChange={(e) => setSide(e.target.value as Color)}>
-                    <option value="white">Jogar de brancas</option>
-                    <option value="black">Jogar de pretas</option>
-                  </select>
+                  <div className="mt-2">
+                    <Choice
+                      label="O seu lado"
+                      value={side}
+                      onChange={setSide}
+                      options={[
+                        { value: "white", label: "Brancas" },
+                        { value: "black", label: "Pretas" },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <Trainer key={`${picked.eco}-${picked.name}-${side}`} opening={picked} side={side} />
               </>
@@ -107,7 +126,15 @@ function Treino() {
             <ul className="space-y-2 text-sm">
               {ENDGAMES.map((e) => (
                 <li key={e.id}>
-                  <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2" onClick={() => setDrill(e)}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2"
+                    onClick={() => {
+                      setDrill(e);
+                      setFen(generateEndgame(e.id as EndgameId));
+                      setSpin((n) => n + 1);
+                    }}
+                  >
                     {e.name}
                   </button>
                 </li>
@@ -115,33 +142,24 @@ function Treino() {
             </ul>
           </Panel>
           <div>
-            {drill ? (
-              <>
-                <h2 className="font-display text-2xl">{drill.name}</h2>
-                <p className="mt-1 mb-3 text-sm text-muted">{drill.goal}</p>
-                <div className="mb-3 flex gap-2">
-                  <button type="button" className={!solo ? "btn btn-primary" : "btn"} onClick={() => setSolo(false)}>
-                    Contra o bot
-                  </button>
-                  <button type="button" className={solo ? "btn btn-primary" : "btn"} onClick={() => setSolo(true)}>
-                    Sozinho
-                  </button>
-                </div>
-                <LiveGame
-                  key={`${drill.id}-${solo}`}
-                  config={{
-                    startFen: drill.fen,
-                    human: solo ? "both" : (loadFen(drill.fen)?.turn ?? "white"),
-                    bot: solo ? null : BOTS[3],
-                    clock: null,
-                    tcLabel: drill.name,
-                    whiteName: solo ? "Brancas" : loadFen(drill.fen)?.turn === "black" ? "Amador forte" : "Você",
-                    blackName: solo ? "Pretas" : loadFen(drill.fen)?.turn === "black" ? "Você" : "Amador forte",
-                  }}
-                />
-              </>
+            {drill && fen ? (
+              <EndgameDrill
+                drill={drill}
+                fen={fen}
+                spin={spin}
+                solo={solo}
+                setSolo={setSolo}
+                botId={botId}
+                setBotId={setBotId}
+                humanSide={humanSide}
+                setHumanSide={setHumanSide}
+                onAnother={() => {
+                  setFen(generateEndgame(drill.id as EndgameId));
+                  setSpin((n) => n + 1);
+                }}
+              />
             ) : (
-              <p className="text-muted">Dez finais clássicos, com objectivo escrito. O resto dos finais táticos está nos problemas.</p>
+              <p className="text-muted">Cada final gera uma posição nova, sem peças penduradas no primeiro lance.</p>
             )}
           </div>
         </div>
@@ -154,6 +172,84 @@ function Treino() {
         </div>
       )}
     </Shell>
+  );
+}
+
+function EndgameDrill({
+  drill,
+  fen,
+  spin,
+  solo,
+  setSolo,
+  botId,
+  setBotId,
+  humanSide,
+  setHumanSide,
+  onAnother,
+}: {
+  drill: (typeof ENDGAMES)[number];
+  fen: string;
+  spin: number;
+  solo: boolean;
+  setSolo: (solo: boolean) => void;
+  botId: (typeof BOTS)[number]["id"];
+  setBotId: (id: (typeof BOTS)[number]["id"]) => void;
+  humanSide: "white" | "black" | "turn";
+  setHumanSide: (side: "white" | "black" | "turn") => void;
+  onAnother: () => void;
+}) {
+  const bot = BOTS.find((b) => b.id === botId) ?? BOTS[3];
+  const turn = loadFen(fen)?.turn ?? "white";
+  const human = solo ? "both" : humanSide === "turn" ? turn : humanSide;
+  return (
+    <>
+      <h2 className="font-display text-2xl">{drill.name}</h2>
+      <p className="mt-1 mb-3 text-sm text-muted">{drill.goal}</p>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <button type="button" className={!solo ? "btn btn-primary" : "btn"} onClick={() => setSolo(false)}>
+          Contra o bot
+        </button>
+        <button type="button" className={solo ? "btn btn-primary" : "btn"} onClick={() => setSolo(true)}>
+          Sozinho
+        </button>
+        <button type="button" className="btn" onClick={onAnother}>
+          Outra posição
+        </button>
+      </div>
+      {!solo && (
+        <div className="mb-3 space-y-3">
+          <Choice
+            label="Nível"
+            value={botId}
+            onChange={setBotId}
+            options={BOTS.map((b) => ({ value: b.id, label: b.elo ? `${b.name} ${b.elo}` : `${b.name} total` }))}
+          />
+          <Choice
+            label="O seu lado"
+            value={humanSide}
+            onChange={setHumanSide}
+            options={[
+              { value: "turn", label: "Quem joga" },
+              { value: "white", label: "Brancas" },
+              { value: "black", label: "Pretas" },
+            ]}
+          />
+        </div>
+      )}
+      <p className="mb-3 text-xs text-muted">A partida fica no histórico. Classificar usa o seu rating: quanto mais alto, mais rigoroso. O melhor lance matemático marca !!!.</p>
+      <LiveGame
+        key={`${drill.id}-${spin}-${solo}-${botId}-${human}`}
+        config={{
+          startFen: fen,
+          human,
+          bot: solo ? null : { name: bot.name, skill: bot.skill, elo: bot.elo },
+          clock: null,
+          tcLabel: drill.name,
+          whiteName: human === "both" ? "Brancas" : human === "white" ? "Você" : bot.name,
+          blackName: human === "both" ? "Pretas" : human === "black" ? "Você" : bot.name,
+        }}
+      />
+    </>
   );
 }
 
@@ -175,6 +271,10 @@ function Trainer({ opening, side }: { opening: Opening; side: Color }) {
     return { chess, last };
   }, [ply, sans]);
   const pos = replay.chess;
+  const rating = useVault((s) => s.rating);
+  const watch = useStopwatch(ply < sans.length);
+  const [marks, setMarks] = useState<Mark[] | null>(null);
+  const [busy, setBusy] = useState("");
 
   useEffect(() => {
     if (!pos || ply >= sans.length || pos.turn === side) return;
@@ -212,12 +312,30 @@ function Trainer({ opening, side }: { opening: Opening; side: Color }) {
         onMove={play}
       />
       <Panel>
-        <p className="text-sm text-muted">{opening.family}</p>
-        <p className="mt-2 text-sm">{sans.map((san, i) => `${i % 2 === 0 ? `${i / 2 + 1}. ` : ""}${san}`).join(" ")}</p>
-        {done && <p className="mt-3 text-sm text-good">Linha completa. Pode recomeçar.</p>}
+        <p className="font-display text-3xl tabular-nums text-brass">{formatWatch(watch.ms)}</p>
+        <p className="mt-1 text-sm text-muted">{opening.family}</p>
+        <p className="mt-2 text-sm">
+          {sans.map((san, i) => (
+            <span key={`${san}-${i}`}>
+              {i % 2 === 0 ? `${i / 2 + 1}. ` : ""}
+              {san} {marks?.[i] && <span className={MARK_CLASS[marks[i]]}>{marks[i]} </span>}
+            </span>
+          ))}
+        </p>
+        {done && <p className="mt-3 text-sm text-good">Linha completa. Pode recomeçar ou classificar o que jogou.</p>}
         {note && <p className="mt-3 text-sm text-blood">{note}</p>}
+        {busy && <p className="mt-2 text-sm text-muted">{busy}</p>}
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" className="btn" onClick={() => { setPly(0); setNote(""); }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setPly(0);
+              setNote("");
+              setMarks(null);
+              watch.reset();
+            }}
+          >
             Recomeçar
           </button>
           {!done && (
@@ -232,7 +350,24 @@ function Trainer({ opening, side }: { opening: Opening; side: Color }) {
               Mostrar lance
             </button>
           )}
+          <button
+            type="button"
+            className="btn"
+            disabled={ply === 0 || Boolean(busy)}
+            onClick={() => {
+              const played = sans.slice(0, ply);
+              const ucis = ucisFromSans(START_FEN, played);
+              setBusy("A classificar…");
+              void reviewLine(START_FEN, ucis, (doneN, total) => setBusy(`${doneN}/${total}`), rating).then((m) => {
+                setMarks(m);
+                setBusy("");
+              });
+            }}
+          >
+            Analisar
+          </button>
         </div>
+        <p className="mt-3 text-xs text-muted">!!! é o melhor lance que o motor encontra. O rigor sobe com o seu rating.</p>
       </Panel>
     </div>
   );

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderSVG } from "uqr";
 import type { Color } from "chessops/types";
 import { Shell, Panel } from "@/components/chess/shell";
+import { Choice } from "@/components/chess/choice";
 import { LiveGame } from "@/components/chess/live-game";
 import { P2PRoom, type PeerInfo } from "@/lib/multiplayer";
 import { publicUrl } from "@/lib/chess/public-url";
@@ -326,18 +327,22 @@ function Amigos() {
             Na sala:{" "}
             {peers.filter((p) => p.id !== myId).map((p) => `${p.name || p.id} (${p.connectionState})`).join(", ") || "à espera de alguém"}
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <select className="field w-auto" value={color} onChange={(e) => setColor(e.target.value as Color)}>
-              <option value="white">Eu de brancas</option>
-              <option value="black">Eu de pretas</option>
-            </select>
-            <select className="field w-auto" value={tc} onChange={(e) => setTc(e.target.value as TimeId)}>
-              {TIME_CONTROLS.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+          <div className="mt-3 space-y-3">
+            <Choice
+              label="A sua cor"
+              value={color}
+              onChange={setColor}
+              options={[
+                { value: "white", label: "Eu de brancas" },
+                { value: "black", label: "Eu de pretas" },
+              ]}
+            />
+            <Choice
+              label="Tempo"
+              value={tc}
+              onChange={setTc}
+              options={TIME_CONTROLS.map((t) => ({ value: t.id, label: t.label }))}
+            />
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={as960} onChange={(e) => setAs960(e.target.checked)} />
               960

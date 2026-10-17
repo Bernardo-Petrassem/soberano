@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Shell, Panel } from "@/components/chess/shell";
+import { Shell } from "@/components/chess/shell";
+import { Choice } from "@/components/chess/choice";
 import { PuzzleRun } from "@/components/chess/puzzle-run";
 import { corpus, type Puzzle } from "@/lib/chess/corpus";
 
@@ -32,33 +33,25 @@ function Problemas() {
 
   return (
     <Shell>
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <h1 className="font-display text-3xl">Problemas</h1>
-          <p className="text-sm text-muted">
-            {puzzles.length ? `${puzzles.length.toLocaleString("pt-PT")} posições da base pública, por rating.` : "A carregar…"}
-          </p>
-        </div>
-        <label className="text-sm text-muted">
-          Tema
-          <select
-            className="field mt-1"
+      <div className="mb-4">
+        <h1 className="font-display text-3xl">Problemas</h1>
+        <p className="text-sm text-muted">
+          {puzzles.length ? `${puzzles.length.toLocaleString("pt-PT")} posições da base pública, por rating.` : "A carregar…"}
+        </p>
+        <div className="mt-3">
+          <Choice
+            label="Tema"
             value={theme}
-            onChange={(e) => {
-              setTheme(e.target.value);
+            onChange={(value) => {
+              setTheme(value);
               setKey((k) => k + 1);
             }}
-          >
-            {THEMES.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={THEMES.map(([id, label]) => ({ value: id, label }))}
+          />
+        </div>
         <button
           type="button"
-          className={timed ? "btn btn-primary" : "btn"}
+          className={`mt-3 ${timed ? "btn btn-primary" : "btn"}`}
           onClick={() => {
             setTimed((v) => !v);
             setKey((k) => k + 1);

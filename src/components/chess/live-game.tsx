@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, Role } from "chessops/types";
 import { Board } from "@/components/chess/board";
+import { EvalBar } from "@/components/chess/eval-bar";
 import { Panel } from "@/components/chess/shell";
-import { Engine, thinkTime } from "@/lib/chess/engine";
+import { formatWatch, useStopwatch } from "@/components/chess/stopwatch";
+import { cpOf, Engine, thinkTime } from "@/lib/chess/engine";
 import { corpus } from "@/lib/chess/corpus";
 import {
   checkedKing,
@@ -90,6 +92,8 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   const [state, setState] = useState(() => fresh(config));
   const [orientation, setOrientation] = useState<Color>(config.human === "black" ? "black" : "white");
   const [now, setNow] = useState(() => performance.now());
+  const [whiteCp, setWhiteCp] = useState(0);
+  const [copied, setCopied] = useState(false);
   const archived = useRef(false);
   const sound = useVault((s) => s.sound);
   const archive = useVault((s) => s.archive);
@@ -107,6 +111,26 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     !state.thinking &&
     (config.human === "both" || config.human === turn);
   const dests = pos && userTurn ? destsOf(pos) : {};
+  const viewFen = pos ? fenOf(pos) : "";
+  const watch = useStopwatch(!config.clock && !state.ending);
+  const botToMove = Boolean(config.bot) && config.human !== "both" && atEnd && !state.ending && config.human !== turn;
+
+  useEffect(() => {
+    if (!viewFen || state.thinking || botToMove) return;
+    let cancel = false;
+    const side = viewFen.split(" ")[1] === "b" ? "black" : "white";
+    void Engine.shared()
+      .go(viewFen, { movetime: 180, multipv: 1, skill: 20, elo: null })
+      .then((res) => {
+        if (cancel) return;
+        const cp = cpOf(res);
+        setWhiteCp(side === "white" ? cp : -cp);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [viewFen, state.thinking, botToMove]);
 
   useEffect(() => {
     if (!state.clock || state.ending) return;
@@ -342,6 +366,22 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   const blackMs = state.clock ? remain(state.clock, "black", now, Boolean(state.ending)) : 0;
   const last = lastSquares(state.ucis[state.cursor - 1]);
 
+  function copyPgn() {
+    const text = toPgn({
+      startFen: state.startFen,
+      sans: state.sans,
+      white: config.whiteName,
+      black: config.blackName,
+      result: state.ending?.result ?? "*",
+      event: config.tcLabel,
+      variant960: config.variant960,
+    });
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  }
+
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,42rem)_18rem]">
       <div>
@@ -352,17 +392,22 @@ export function LiveGame({ config }: { config: LiveConfig }) {
           </button>
         </div>
         {pos && (
-          <Board
-            fen={fenOf(pos)}
-            orientation={orientation}
-            dests={dests}
-            lastMove={last}
-            checkSquare={checkedKing(pos)}
-            interactive={userTurn}
-            sideToMove={turn}
-            isPromotion={(from, to) => needsPromotion(pos, from, to)}
-            onMove={tryMove}
-          />
+          <div className="flex items-stretch gap-1.5">
+            <EvalBar whiteCp={whiteCp} orientation={orientation} />
+            <div className="min-w-0 flex-1">
+              <Board
+                fen={fenOf(pos)}
+                orientation={orientation}
+                dests={dests}
+                lastMove={last}
+                checkSquare={checkedKing(pos)}
+                interactive={userTurn}
+                sideToMove={turn}
+                isPromotion={(from, to) => needsPromotion(pos, from, to)}
+                onMove={tryMove}
+              />
+            </div>
+          </div>
         )}
         <div className="mt-3">
           <ClockPill name={orientation === "white" ? config.whiteName : config.blackName} ms={orientation === "white" ? whiteMs : blackMs} active={Boolean(state.clock) && turn === orientation && !state.ending} show={Boolean(state.clock)} />
@@ -370,6 +415,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       </div>
       <Panel>
         <p className="font-display text-lg text-brass">{config.tcLabel}</p>
+        {!config.clock && <p className="font-display mt-1 text-3xl tabular-nums">{formatWatch(watch.ms)}</p>}
         <p className="mt-1 text-sm text-muted">
           {config.whiteName} contra {config.blackName}
           {state.thinking ? " · a pensar…" : ""}
@@ -378,6 +424,11 @@ export function LiveGame({ config }: { config: LiveConfig }) {
           <p className="mt-3 rounded-xl bg-felt px-3 py-2 text-sm">
             {state.ending.result} · {state.ending.reason}
           </p>
+        )}
+        {state.ending && (
+          <button type="button" className="btn mt-3" onClick={copyPgn}>
+            {copied ? "PGN copiado" : "Copiar PGN"}
+          </button>
         )}
         {state.note && <p className="mt-2 text-sm text-blood">{state.note}</p>}
         {!atEnd && (

@@ -19,12 +19,25 @@ export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0
 export type Mark =
   | "Livro"
   | "Brilhante"
+  | "!!!"
   | "Ótimo"
   | "Excelente"
   | "Bom"
   | "Imprecisão"
   | "Erro"
   | "Gafe";
+
+export const MARK_CLASS: Record<Mark, string> = {
+  Livro: "text-muted",
+  Brilhante: "text-good",
+  "!!!": "text-brass font-semibold",
+  Ótimo: "text-brass-2",
+  Excelente: "text-good",
+  Bom: "text-cream",
+  Imprecisão: "text-brass",
+  Erro: "text-blood",
+  Gafe: "text-blood",
+};
 
 export const TIME_CONTROLS = [
   { id: "none", label: "Sem relógio", initial: 0, inc: 0 },
@@ -209,6 +222,7 @@ export function classifyMove(opts: {
   secondGap: number;
   sacrifice: boolean;
   onlyMove: boolean;
+  elo?: number;
 }): Mark {
   if (opts.book && opts.cpBefore - opts.cpAfterForMover < 80) return "Livro";
   const loss = winPercent(opts.cpBefore) - winPercent(opts.cpAfterForMover);
@@ -221,11 +235,16 @@ export function classifyMove(opts: {
   ) {
     return "Brilhante";
   }
-  if (opts.playedIsBest && opts.secondGap >= 180 && loss < 5) return "Ótimo";
-  if (loss < 2) return "Excelente";
-  if (loss < 5) return "Bom";
-  if (loss < 10) return "Imprecisão";
-  if (loss < 20) return "Erro";
+  if (opts.playedIsBest) return "!!!";
+  const t = Math.min(1, Math.max(0, ((opts.elo ?? 1500) - 400) / 2000));
+  const excellent = 8 - t * 6;
+  const good = 14 - t * 9;
+  const inaccuracy = 24 - t * 14;
+  const mistake = 40 - t * 20;
+  if (loss < excellent) return "Excelente";
+  if (loss < good) return "Bom";
+  if (loss < inaccuracy) return "Imprecisão";
+  if (loss < mistake) return "Erro";
   return "Gafe";
 }
 
@@ -434,5 +453,5 @@ export const ENDGAMES: { id: string; name: string; goal: string; fen: string }[]
   { id: "philidor", name: "Philidor", goal: "Pretas defendem. Torre na sexta, xeque por trás quando o peão avança.", fen: "4k3/8/8/3p4/8/8/4K3/r7 b - - 0 1" },
   { id: "qr", name: "Dama contra torre", goal: "Force a torre a afastar-se do rei.", fen: "8/8/8/3k4/8/3r4/3Q4/3K4 w - - 0 1" },
   { id: "rp", name: "Torre e peão", goal: "Peão passado com torre por trás.", fen: "8/8/8/3k4/3P4/8/3K4/3R4 w - - 0 1" },
-  { id: "opb", name: "Bispos de cores opostas", goal: "Muitas vezes é empate. Procure dois peões passados distantes.", fen: "8/5k2/2b5/3P4/3K4/8/2B5/8 w - - 0 1" },
+  { id: "opb", name: "Bispos de cores opostas", goal: "Muitas vezes é empate. Procure dois peões passados distantes.", fen: "1k6/1pp1b3/7P/7P/B7/8/3K4/8 w - - 0 1" },
 ];

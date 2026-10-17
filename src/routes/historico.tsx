@@ -2,26 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Shell, Panel } from "@/components/chess/shell";
 import { Board } from "@/components/chess/board";
-import { checkedKing, fenOf, lastSquares, positionAt, type Mark } from "@/lib/chess/logic";
+import { checkedKing, fenOf, lastSquares, MARK_CLASS, positionAt } from "@/lib/chess/logic";
 import { reviewLine } from "@/lib/chess/review";
 import { useHydrated, useVault } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/historico")({ component: Historico });
 
-const TONE: Record<Mark, string> = {
-  Livro: "text-muted",
-  Brilhante: "text-good",
-  Ótimo: "text-brass-2",
-  Excelente: "text-good",
-  Bom: "text-cream",
-  Imprecisão: "text-brass",
-  Erro: "text-blood",
-  Gafe: "text-blood",
-};
-
 function Historico() {
   const hydrated = useHydrated();
   const games = useVault((s) => s.games);
+  const rating = useVault((s) => s.rating);
   const setMarks = useVault((s) => s.setMarks);
   const removeGame = useVault((s) => s.removeGame);
   const [id, setId] = useState<string | null>(null);
@@ -83,7 +73,7 @@ function Historico() {
                   className="btn btn-primary"
                   onClick={() => {
                     setBusy("A classificar…");
-                    void reviewLine(game.startFen, game.ucis, (done, total) => setBusy(`${done}/${total}`)).then((marks) => {
+                    void reviewLine(game.startFen, game.ucis, (done, total) => setBusy(`${done}/${total}`), rating).then((marks) => {
                       setMarks(game.id, marks);
                       setBusy("");
                     });
@@ -105,7 +95,7 @@ function Historico() {
                         {i % 2 === 0 ? `${i / 2 + 1}. ` : ""}
                         {san}
                       </button>{" "}
-                      {game.marks?.[i] && <span className={TONE[game.marks[i]]}>{game.marks[i]}</span>}
+                      {game.marks?.[i] && <span className={MARK_CLASS[game.marks[i]]}>{game.marks[i]}</span>}
                     </li>
                   ))}
                 </ol>

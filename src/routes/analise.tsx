@@ -6,24 +6,29 @@ import { parseSquare } from "chessops/util";
 import type { Color, Role } from "chessops/types";
 import { Shell, Panel } from "@/components/chess/shell";
 import { Board } from "@/components/chess/board";
+import { Choice } from "@/components/chess/choice";
+import { EvalBar } from "@/components/chess/eval-bar";
 import { LiveGame } from "@/components/chess/live-game";
 import { cpOf, Engine, type GoResult } from "@/lib/chess/engine";
 import {
+  BOTS,
   checkedKing,
   destsOf,
   fenOf,
   lastSquares,
   legalMove,
   loadFen,
+  MARK_CLASS,
   parseMainline,
   positionAt,
   sanAndUci,
   START_FEN,
   ucisFromSans,
+  type Mark,
 } from "@/lib/chess/logic";
 import { corpus } from "@/lib/chess/corpus";
 import { reviewLine } from "@/lib/chess/review";
-import type { Mark } from "@/lib/chess/logic";
+import { useVault } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/analise")({ component: Analise });
 
@@ -65,6 +70,7 @@ function editSquare(fen: string, square: string, tool: { color: Color; role: Rol
 }
 
 function Analise() {
+  const rating = useVault((s) => s.rating);
   const [fen, setFen] = useState(START_FEN);
   const [draft, setDraft] = useState(START_FEN);
   const [pgn, setPgn] = useState("");
@@ -74,23 +80,30 @@ function Analise() {
   const [tool, setTool] = useState<{ color: Color; role: Role } | "erase" | null>(null);
   const [engineOn, setEngineOn] = useState(false);
   const [lines, setLines] = useState<GoResult | null>(null);
+  const [whiteCp, setWhiteCp] = useState(0);
   const [names, setNames] = useState<{ eco: string; name: string }[]>([]);
   const [marks, setMarks] = useState<Mark[] | null>(null);
   const [progress, setProgress] = useState("");
   const [train, setTrain] = useState(false);
+  const [trainBot, setTrainBot] = useState<(typeof BOTS)[number]["id"]>("clube");
+  const [trainColor, setTrainColor] = useState<Color>("white");
   const [note, setNote] = useState("");
 
   const pos = positionAt(fen, ucis, cursor);
   const view = pos ? fenOf(pos) : fen;
 
   useEffect(() => {
-    if (!engineOn || !pos) return;
+    if (!pos) return;
     let cancel = false;
+    const side = view.split(" ")[1] === "b" ? "black" : "white";
     const engine = Engine.shared();
     void engine
-      .go(fenOf(pos), { movetime: 350, multipv: 3, skill: 20, elo: null })
+      .go(view, { movetime: engineOn ? 350 : 160, multipv: engineOn ? 3 : 1, skill: 20, elo: null })
       .then((res) => {
-        if (!cancel) setLines(res);
+        if (cancel) return;
+        if (engineOn) setLines(res);
+        const cp = cpOf(res);
+        setWhiteCp(side === "white" ? cp : -cp);
       })
       .catch(() => {
         if (!cancel) setNote("Motor indisponível.");
@@ -104,28 +117,9 @@ function Analise() {
     void corpus().then((c) => setNames(c.namesAt(view)));
   }, [view]);
 
-  function loadPgn() {
-    const parsed = parseMainline(pgn);
-    if (!parsed) {
-      setNote("PGN sem lances reconhecíveis.");
-      return;
-    }
-    setFen(parsed.startFen);
-    setDraft(parsed.startFen);
-    setSans(parsed.sans);
-    setUcis(ucisFromSans(parsed.startFen, parsed.sans));
-    setCursor(0);
-    setMarks(null);
-    setTrain(false);
-    setNote("");
-  }
-
-  function applyDraft() {
-    if (!loadFen(draft.trim())) {
-      setNote("FEN ilegal.");
-      return;
-    }
-    setFen(draft.trim());
+  function applyFen(next: string) {
+    setFen(next);
+    setDraft(next);
     setUcis([]);
     setSans([]);
     setCursor(0);
@@ -134,21 +128,57 @@ function Analise() {
     setNote("");
   }
 
+  function ingest(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (loadFen(trimmed)) {
+      applyFen(trimmed);
+      setPgn(trimmed);
+      return;
+    }
+    const parsed = parseMainline(trimmed);
+    if (!parsed || parsed.sans.length === 0) {
+      setNote("Não reconheci um PGN nem um FEN.");
+      return;
+    }
+    const nextUcis = ucisFromSans(parsed.startFen, parsed.sans);
+    setFen(parsed.startFen);
+    setDraft(parsed.startFen);
+    setPgn(trimmed);
+    setSans(parsed.sans);
+    setUcis(nextUcis);
+    setCursor(nextUcis.length);
+    setMarks(null);
+    setTrain(false);
+    setNote(nextUcis.length ? "Partida no tabuleiro. Recue um lance de cada vez." : "PGN sem lances jogáveis.");
+  }
+
+  function loadPgn() {
+    ingest(pgn);
+  }
+
+  function applyDraft() {
+    ingest(draft);
+  }
+
   if (train && pos) {
+    const bot = BOTS.find((b) => b.id === trainBot) ?? BOTS[2];
+    const youWhite = trainColor === "white";
     return (
       <Shell>
         <button type="button" className="btn mb-4" onClick={() => setTrain(false)}>
           Voltar à análise
         </button>
         <LiveGame
+          key={`${trainBot}-${trainColor}-${fenOf(pos)}`}
           config={{
             startFen: fenOf(pos),
-            human: "white",
-            bot: { name: "Clube", skill: 6, elo: 1400 },
+            human: trainColor,
+            bot: { name: bot.name, skill: bot.skill, elo: bot.elo },
             clock: null,
-            tcLabel: "Treino a partir da posição",
-            whiteName: "Você",
-            blackName: "Clube",
+            tcLabel: `Treino · ${bot.name}`,
+            whiteName: youWhite ? "Você" : bot.name,
+            blackName: youWhite ? bot.name : "Você",
           }}
         />
       </Shell>
@@ -160,37 +190,43 @@ function Analise() {
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,42rem)_20rem]">
         <div>
           {pos && (
-            <Board
-              fen={fenOf(pos)}
-              dests={tool ? {} : destsOf(pos)}
-              lastMove={lastSquares(ucis[cursor - 1])}
-              checkSquare={checkedKing(pos)}
-              interactive
-              sideToMove={pos.turn}
-              editRole={tool}
-              onEdit={(square) => {
-                if (!tool) return;
-                const next = editSquare(view, square, tool);
-                setNote(next ? "" : "Essa casa deixaria a posição ilegal.");
-                if (!next) return;
-                setFen(next);
-                setDraft(next);
-                setUcis([]);
-                setSans([]);
-                setCursor(0);
-              }}
-              onMove={(from, to, promotion) => {
-                const move = legalMove(pos, from, to, promotion);
-                if (!move) return;
-                const packed = sanAndUci(pos, move);
-                const nextUcis = [...ucis.slice(0, cursor), packed.uci];
-                const nextSans = [...sans.slice(0, cursor), packed.san];
-                setUcis(nextUcis);
-                setSans(nextSans);
-                setCursor(nextUcis.length);
-                setMarks(null);
-              }}
-            />
+            <div className="flex items-stretch gap-1.5">
+              <EvalBar whiteCp={whiteCp} orientation="white" />
+              <div className="min-w-0 flex-1">
+                <Board
+                  fen={fenOf(pos)}
+                  dests={tool ? {} : destsOf(pos)}
+                  lastMove={lastSquares(ucis[cursor - 1])}
+                  checkSquare={checkedKing(pos)}
+                  interactive
+                  sideToMove={pos.turn}
+                  editRole={tool}
+                  onEdit={(square) => {
+                    if (!tool) return;
+                    const next = editSquare(view, square, tool);
+                    setNote(next ? "" : "Essa casa deixaria a posição ilegal.");
+                    if (!next) return;
+                    setFen(next);
+                    setDraft(next);
+                    setUcis([]);
+                    setSans([]);
+                    setCursor(0);
+                    setMarks(null);
+                  }}
+                  onMove={(from, to, promotion) => {
+                    const move = legalMove(pos, from, to, promotion);
+                    if (!move) return;
+                    const packed = sanAndUci(pos, move);
+                    const nextUcis = [...ucis.slice(0, cursor), packed.uci];
+                    const nextSans = [...sans.slice(0, cursor), packed.san];
+                    setUcis(nextUcis);
+                    setSans(nextSans);
+                    setCursor(nextUcis.length);
+                    setMarks(null);
+                  }}
+                />
+              </div>
+            </div>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="btn" onClick={() => setCursor((c) => Math.max(0, c - 1))}>
@@ -202,7 +238,24 @@ function Analise() {
             <button type="button" className="btn" onClick={() => setEngineOn((v) => !v)}>
               {engineOn ? "Desligar motor" : "Ligar motor"}
             </button>
-            <button type="button" className="btn" onClick={() => setTrain(true)}>
+          </div>
+          <div className="mt-3 space-y-3">
+            <Choice
+              label="Treinar contra"
+              value={trainBot}
+              onChange={setTrainBot}
+              options={BOTS.map((b) => ({ value: b.id, label: b.elo ? `${b.name} ${b.elo}` : `${b.name} total` }))}
+            />
+            <Choice
+              label="A sua cor"
+              value={trainColor}
+              onChange={setTrainColor}
+              options={[
+                { value: "white", label: "Brancas" },
+                { value: "black", label: "Pretas" },
+              ]}
+            />
+            <button type="button" className="btn btn-primary" onClick={() => setTrain(true)}>
               Treinar desta posição
             </button>
           </div>
@@ -210,11 +263,33 @@ function Analise() {
         <div className="space-y-4">
           <Panel>
             <h1 className="font-display text-2xl">Análise</h1>
-            <textarea className="field mt-3 min-h-28" placeholder="Cole um PGN" value={pgn} onChange={(e) => setPgn(e.target.value)} />
+            <textarea
+              className="field mt-3 min-h-28"
+              placeholder="Cole um PGN ou um FEN"
+              value={pgn}
+              onChange={(e) => setPgn(e.target.value)}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData("text");
+                if (!text.trim()) return;
+                e.preventDefault();
+                ingest(text);
+              }}
+            />
             <button type="button" className="btn mt-2" onClick={loadPgn}>
               Abrir PGN
             </button>
-            <input className="field mt-3" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="FEN" />
+            <input
+              className="field mt-3"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData("text");
+                if (!text.trim()) return;
+                e.preventDefault();
+                ingest(text);
+              }}
+              aria-label="FEN"
+            />
             <button type="button" className="btn mt-2" onClick={applyDraft}>
               Posição FEN
             </button>
@@ -281,7 +356,7 @@ function Analise() {
                 className="btn btn-primary"
                 onClick={() => {
                   setProgress("A classificar…");
-                  void reviewLine(fen, ucis, (done, total) => setProgress(`${done}/${total}`)).then((m) => {
+                  void reviewLine(fen, ucis, (done, total) => setProgress(`${done}/${total}`), rating).then((m) => {
                     setMarks(m);
                     setProgress("");
                   });
@@ -297,7 +372,7 @@ function Analise() {
                       {i % 2 === 0 ? `${i / 2 + 1}. ` : ""}
                       {san}
                     </button>{" "}
-                    {marks?.[i] && <span className="text-muted">{marks[i]}</span>}
+                    {marks?.[i] && <span className={MARK_CLASS[marks[i]]}>{marks[i]}</span>}
                   </li>
                 ))}
               </ol>
