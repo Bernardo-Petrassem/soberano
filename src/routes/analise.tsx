@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Chess } from "chessops/chess";
 import { SquareSet } from "chessops/squareSet";
 import { parseSquare } from "chessops/util";
-import type { Color, Role } from "chessops/types";
+import type { Color, Role, Square } from "chessops/types";
 import { Shell, Panel } from "@/components/chess/shell";
 import { Board } from "@/components/chess/board";
 import { Choice } from "@/components/chess/choice";
@@ -19,10 +19,12 @@ import {
   legalMove,
   loadFen,
   MARK_CLASS,
+  pairedSans,
   parseMainline,
   positionAt,
   sanAndUci,
   START_FEN,
+  toPgn,
   ucisFromSans,
   type Mark,
 } from "@/lib/chess/logic";
@@ -53,20 +55,31 @@ function editSquare(fen: string, square: string, tool: { color: Color; role: Rol
   const sq = parseSquare(square);
   if (sq == null) return null;
   const board = pos.board.clone();
-  if (tool === "erase") board.take(sq);
-  else board.set(sq, { color: tool.color, role: tool.role });
-  const setup = {
-    board,
-    pockets: undefined,
-    turn: pos.turn,
-    castlingRights: SquareSet.empty(),
-    epSquare: undefined,
-    remainingChecks: undefined,
-    halfmoves: 0,
-    fullmoves: pos.fullmoves,
+  if (tool !== "erase" && tool.role === "king") {
+    const remove: Square[] = [];
+    for (const [at, piece] of board) {
+      if (piece.role === "king" && piece.color === tool.color && at !== sq) remove.push(at);
+    }
+    for (const at of remove) board.take(at);
+  }
+  if (tool === "erase") {
+    if (board.get(sq)?.role === "king") return null;
+    board.take(sq);
+  } else board.set(sq, { color: tool.color, role: tool.role });
+  const place = (turn: Color) => {
+    const next = Chess.fromSetup({
+      board,
+      pockets: undefined,
+      turn,
+      castlingRights: SquareSet.empty(),
+      epSquare: undefined,
+      remainingChecks: undefined,
+      halfmoves: 0,
+      fullmoves: pos.fullmoves,
+    });
+    return next.isErr ? null : fenOf(next.unwrap());
   };
-  const next = Chess.fromSetup(setup);
-  return next.isErr ? null : fenOf(next.unwrap());
+  return place(pos.turn) ?? place(pos.turn === "white" ? "black" : "white");
 }
 
 function Analise() {
@@ -85,8 +98,10 @@ function Analise() {
   const [marks, setMarks] = useState<Mark[] | null>(null);
   const [progress, setProgress] = useState("");
   const [train, setTrain] = useState(false);
-  const [trainBot, setTrainBot] = useState<(typeof BOTS)[number]["id"]>("clube");
+  const [trainBot, setTrainBot] = useState<(typeof BOTS)[number]["id"] | "local">("clube");
   const [trainColor, setTrainColor] = useState<Color>("white");
+  const [round, setRound] = useState(0);
+  const [copied, setCopied] = useState(false);
   const [note, setNote] = useState("");
 
   const pos = positionAt(fen, ucis, cursor);
@@ -162,23 +177,30 @@ function Analise() {
   }
 
   if (train && pos) {
+    const local = trainBot === "local";
     const bot = BOTS.find((b) => b.id === trainBot) ?? BOTS[2];
     const youWhite = trainColor === "white";
     return (
       <Shell>
-        <button type="button" className="btn mb-4" onClick={() => setTrain(false)}>
-          Voltar à análise
-        </button>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" className="btn" onClick={() => setTrain(false)}>
+            Voltar à análise
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setRound((n) => n + 1)}>
+            Jogar de novo
+          </button>
+        </div>
         <LiveGame
-          key={`${trainBot}-${trainColor}-${fenOf(pos)}`}
+          key={`${trainBot}-${trainColor}-${round}-${cursor}-${fen}`}
           config={{
-            startFen: fenOf(pos),
-            human: trainColor,
-            bot: { name: bot.name, skill: bot.skill, elo: bot.elo },
+            startFen: fen,
+            prelude: { sans: sans.slice(0, cursor), ucis: ucis.slice(0, cursor) },
+            human: local ? "both" : trainColor,
+            bot: local ? null : { name: bot.name, skill: bot.skill, elo: bot.elo },
             clock: null,
-            tcLabel: `Treino · ${bot.name}`,
-            whiteName: youWhite ? "Você" : bot.name,
-            blackName: youWhite ? bot.name : "Você",
+            tcLabel: local ? "Análise a duas" : `Treino · ${bot.name}`,
+            whiteName: local ? "Brancas" : youWhite ? "Você" : bot.name,
+            blackName: local ? "Pretas" : youWhite ? bot.name : "Você",
           }}
         />
       </Shell>
@@ -204,7 +226,7 @@ function Analise() {
                   onEdit={(square) => {
                     if (!tool) return;
                     const next = editSquare(view, square, tool);
-                    setNote(next ? "" : "Essa casa deixaria a posição ilegal.");
+                    setNote(next ? "" : "Não deu. O rei muda de casa se o seleccionar e clicar no destino.");
                     if (!next) return;
                     setFen(next);
                     setDraft(next);
@@ -222,21 +244,24 @@ function Analise() {
                     setUcis(nextUcis);
                     setSans(nextSans);
                     setCursor(nextUcis.length);
-                    setMarks(null);
+                    setMarks((current) => (current ? current.slice(0, cursor) : current));
                   }}
                 />
               </div>
             </div>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className="btn" onClick={() => setCursor((c) => Math.max(0, c - 1))}>
-              Lance anterior
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <button type="button" className="btn" onClick={() => setCursor(0)} disabled={cursor === 0}>
+              Início
             </button>
-            <button type="button" className="btn" onClick={() => setCursor((c) => Math.min(ucis.length, c + 1))}>
-              Lance seguinte
+            <button type="button" className="btn" onClick={() => setCursor((c) => Math.max(0, c - 1))} disabled={cursor === 0}>
+              Anterior
             </button>
-            <button type="button" className="btn" onClick={() => setEngineOn((v) => !v)}>
-              {engineOn ? "Desligar motor" : "Ligar motor"}
+            <button type="button" className="btn" onClick={() => setCursor((c) => Math.min(ucis.length, c + 1))} disabled={cursor >= ucis.length}>
+              Seguinte
+            </button>
+            <button type="button" className="btn" onClick={() => setCursor(ucis.length)} disabled={cursor >= ucis.length}>
+              Fim
             </button>
           </div>
           <div className="mt-3 space-y-3">
@@ -244,7 +269,10 @@ function Analise() {
               label="Treinar contra"
               value={trainBot}
               onChange={setTrainBot}
-              options={BOTS.map((b) => ({ value: b.id, label: b.elo ? `${b.name} ${b.elo}` : `${b.name} total` }))}
+              options={[
+                { value: "local", label: "Duas pessoas, neste ecrã" },
+                ...BOTS.map((b) => ({ value: b.id, label: b.elo ? `${b.name} ${b.elo}` : `${b.name} total` })),
+              ]}
             />
             <Choice
               label="A sua cor"
@@ -257,6 +285,9 @@ function Analise() {
             />
             <button type="button" className="btn btn-primary" onClick={() => setTrain(true)}>
               Treinar desta posição
+            </button>
+            <button type="button" className="btn" onClick={() => setEngineOn((v) => !v)}>
+              {engineOn ? "Desligar motor" : "Ligar motor"}
             </button>
           </div>
         </div>
@@ -292,6 +323,26 @@ function Analise() {
             />
             <button type="button" className="btn mt-2" onClick={applyDraft}>
               Posição FEN
+            </button>
+            <button
+              type="button"
+              className="btn mt-2"
+              onClick={() => {
+                const text = toPgn({
+                  startFen: fen,
+                  sans,
+                  white: "Brancas",
+                  black: "Pretas",
+                  result: "*",
+                  event: "Análise",
+                });
+                void navigator.clipboard.writeText(text).then(() => {
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+            >
+              {copied ? "PGN copiado" : "Copiar PGN"}
             </button>
             {note && <p className="mt-2 text-sm text-blood">{note}</p>}
             {names.length > 0 && (
@@ -355,8 +406,8 @@ function Analise() {
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  setProgress("A classificar…");
-                  void reviewLine(fen, ucis, (done, total) => setProgress(`${done}/${total}`), rating).then((m) => {
+                  setProgress(marks && marks.length >= ucis.length ? "Já classificados." : "A classificar os lances novos…");
+                  void reviewLine(fen, ucis, (done, total) => setProgress(`${done}/${total}`), rating, marks ?? undefined).then((m) => {
                     setMarks(m);
                     setProgress("");
                   });
@@ -366,13 +417,23 @@ function Analise() {
               </button>
               {progress && <p className="mt-2 text-sm text-muted">{progress}</p>}
               <ol className="mt-3 max-h-64 space-y-1 overflow-auto text-sm">
-                {sans.map((san, i) => (
-                  <li key={i}>
-                    <button type="button" className={cursor === i + 1 ? "text-brass" : ""} onClick={() => setCursor(i + 1)}>
-                      {i % 2 === 0 ? `${i / 2 + 1}. ` : ""}
-                      {san}
-                    </button>{" "}
-                    {marks?.[i] && <span className={MARK_CLASS[marks[i]]}>{marks[i]}</span>}
+                {pairedSans(fen, sans).map((row) => (
+                  <li key={row.white?.ply ?? row.black?.ply} className="grid grid-cols-[2.5rem_1fr_1fr] gap-1">
+                    <span className="text-muted">{row.no}.</span>
+                    {row.white ? (
+                      <button type="button" className={cursor === row.white.ply ? "text-brass" : ""} onClick={() => setCursor(row.white!.ply)}>
+                        {row.white.san} {marks?.[row.white.ply - 1] && <span className={MARK_CLASS[marks[row.white.ply - 1]!]}>{marks[row.white.ply - 1]}</span>}
+                      </button>
+                    ) : (
+                      <span className="text-muted">…</span>
+                    )}
+                    {row.black ? (
+                      <button type="button" className={cursor === row.black.ply ? "text-brass" : ""} onClick={() => setCursor(row.black!.ply)}>
+                        {row.black.san} {marks?.[row.black.ply - 1] && <span className={MARK_CLASS[marks[row.black.ply - 1]!]}>{marks[row.black.ply - 1]}</span>}
+                      </button>
+                    ) : (
+                      <span />
+                    )}
                   </li>
                 ))}
               </ol>

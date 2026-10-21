@@ -40,6 +40,8 @@ function centerOf(square: string, orientation: Color) {
 
 export type Arrow = { from: string; to: string };
 
+export type Premove = { from: string; to: string; promotion?: Role };
+
 export function Board({
   fen,
   orientation = "white",
@@ -52,6 +54,10 @@ export function Board({
   sideToMove = "white",
   editRole,
   onEdit,
+  premoves = [],
+  allowPremove = false,
+  premoveColor,
+  onPremove,
 }: {
   fen: string;
   orientation?: Color;
@@ -64,6 +70,10 @@ export function Board({
   sideToMove?: Color;
   editRole?: { color: Color; role: Role } | "erase" | null;
   onEdit?: (square: string) => void;
+  premoves?: Premove[];
+  allowPremove?: boolean;
+  premoveColor?: Color;
+  onPremove?: (from: string, to: string, promotion?: Role) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -81,6 +91,13 @@ export function Board({
   const hold = useRef<number | 0>(0);
   const leftStreak = useRef(0);
   const pieces = piecesOf(fen);
+  const premoveOn = Boolean(allowPremove && onPremove && !interactive && !editRole);
+
+  useEffect(() => {
+    if (!promo) return;
+    setDrag(null);
+    setSelected(null);
+  }, [promo]);
 
   useEffect(() => {
     setSelected(null);
@@ -93,8 +110,25 @@ export function Board({
   const pieceAt = (square: string) => pieces.find((p) => p.square === square);
 
   function finish(from: string, to: string) {
+    if (promo) return;
     if (from === to) {
       setSelected(from);
+      return;
+    }
+    if (premoveOn) {
+      const target = pieceAt(to);
+      const own = premoveColor ?? orientation;
+      if (target && target.color === own) {
+        setSelected(to);
+        return;
+      }
+      if (isPromotion?.(from, to)) {
+        setPromo({ from, to });
+        setSelected(null);
+        return;
+      }
+      onPremove?.(from, to);
+      setSelected(null);
       return;
     }
     if (isPromotion?.(from, to)) {
@@ -124,6 +158,7 @@ export function Board({
       }, 380);
     }
     if (e.button !== 0) return;
+    if (promo) return;
     leftStreak.current += 1;
     if (leftStreak.current >= 2) {
       leftStreak.current = 0;
@@ -132,11 +167,12 @@ export function Board({
     }
     if (editRole && onEdit) return;
     const piece = pieceAt(square);
-    if (selected && dests[selected]?.includes(square)) {
+    if (selected && (premoveOn || dests[selected]?.includes(square))) {
       finish(selected, square);
       return;
     }
-    if (!piece || !interactive || !dests[square]?.length) {
+    const canDrag = Boolean(piece) && (interactive ? Boolean(dests[square]?.length) : premoveOn && piece?.color === (premoveColor ?? orientation));
+    if (!canDrag || !piece) {
       setSelected(null);
       return;
     }
@@ -168,7 +204,11 @@ export function Board({
     } else {
       arrowFrom.current = null;
     }
-    if (editRole && onEdit && e.button === 0 && square) onEdit(square);
+    if (editRole && onEdit && e.button === 0 && square && !promo) onEdit(square);
+    if (promo) {
+      setDrag(null);
+      return;
+    }
     if (drag && square) finish(drag.from, square);
     setDrag(null);
   }
@@ -183,9 +223,12 @@ export function Board({
       const piece = pieceAt(name);
       const fromSq = lastMove?.[0] === name;
       const toSq = lastMove?.[1] === name;
-      const isDest = selected ? dests[selected]?.includes(name) : false;
+      const isDest = Boolean(selected && !premoveOn && dests[selected]?.includes(name));
       const isSel = selected === name;
       const marked = marks.includes(name);
+      const preFrom = premoves.some((p) => p.from === name);
+      const preTo = premoves.find((p) => p.to === name);
+      const ghost = preTo ? pieceAt(preTo.from) : undefined;
       const label = dark ? "#f6efe2" : "#4a3424";
       grid.push(
         <div
@@ -212,9 +255,15 @@ export function Board({
               }
             />
           )}
+          {preFrom && <span className="absolute inset-0" style={{ boxShadow: "inset 0 0 0 3px var(--color-brass-2)" }} />}
           {piece && drag?.from !== name && (
             <span className="absolute inset-[7%]">
               <Glyph role={piece.role} color={piece.color} />
+            </span>
+          )}
+          {ghost && (
+            <span className="absolute inset-[7%] opacity-45">
+              <Glyph role={ghost.role} color={ghost.color} />
             </span>
           )}
           {col === 0 && (
@@ -281,7 +330,8 @@ export function Board({
                   type="button"
                   className="flex size-14 items-center justify-center rounded-lg bg-light-sq"
                   onClick={() => {
-                    onMove?.(promo.from, promo.to, role);
+                    if (premoveOn) onPremove?.(promo.from, promo.to, role);
+                    else onMove?.(promo.from, promo.to, role);
                     setPromo(null);
                   }}
                 >

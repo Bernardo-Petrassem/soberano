@@ -1,3 +1,4 @@
+import { attacks } from "chessops";
 import { Chess, normalizeMove } from "chessops/chess";
 import { makeFen, parseFen } from "chessops/fen";
 import { makeSan, parseSan } from "chessops/san";
@@ -20,6 +21,7 @@ export type Mark =
   | "Livro"
   | "Brilhante"
   | "!!!"
+  | "★"
   | "Ótimo"
   | "Excelente"
   | "Bom"
@@ -31,6 +33,7 @@ export const MARK_CLASS: Record<Mark, string> = {
   Livro: "text-muted",
   Brilhante: "text-good",
   "!!!": "text-brass font-semibold",
+  "★": "text-brass-2 font-semibold",
   Ótimo: "text-brass-2",
   Excelente: "text-good",
   Bom: "text-cream",
@@ -209,9 +212,31 @@ export function material(pos: Chess, color: Color): number {
   return score;
 }
 
+export function hangingCount(pos: Chess, color: Color): number {
+  let count = 0;
+  const enemy = opposite(color);
+  for (const [sq, piece] of pos.board) {
+    if (piece.color !== color || piece.role === "king") continue;
+    const hit = (by: Color) => {
+      for (const [at, other] of pos.board) {
+        if (other.color === by && attacks(other, at, pos.board.occupied).has(sq)) return true;
+      }
+      return false;
+    };
+    if (hit(enemy) && !hit(color)) count += 1;
+  }
+  return count;
+}
+
 export function winPercent(cp: number): number {
   const clamped = Math.max(-1000, Math.min(1000, cp));
   return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * clamped)) - 1);
+}
+
+/** Expected-score change. Positive when the player did better than the rating gap predicts. */
+export function eloDelta(player: number, opponent: number, score: number, k = 24): number {
+  const expected = 1 / (1 + 10 ** ((opponent - player) / 400));
+  return Math.round(k * (score - expected));
 }
 
 export function classifyMove(opts: {
@@ -221,21 +246,22 @@ export function classifyMove(opts: {
   playedIsBest: boolean;
   secondGap: number;
   sacrifice: boolean;
+  materialDrop: number;
   onlyMove: boolean;
   elo?: number;
 }): Mark {
-  if (opts.book && opts.cpBefore - opts.cpAfterForMover < 80) return "Livro";
-  const loss = winPercent(opts.cpBefore) - winPercent(opts.cpAfterForMover);
-  if (
-    opts.playedIsBest &&
-    opts.sacrifice &&
-    !opts.onlyMove &&
-    opts.secondGap >= 120 &&
-    loss < 8
-  ) {
+  const beforeWin = winPercent(opts.cpBefore);
+  const afterWin = winPercent(opts.cpAfterForMover);
+  const swing = afterWin - beforeWin;
+  const cpLoss = opts.cpBefore - opts.cpAfterForMover;
+  const deep = opts.materialDrop >= 3 || (opts.materialDrop >= 2 && swing >= 22);
+  if (deep && swing >= 15 && beforeWin < 68 && afterWin >= 72 && cpLoss < 80) return "!!!";
+  if (opts.book && cpLoss < 80) return "Livro";
+  const loss = beforeWin - afterWin;
+  if (opts.playedIsBest && opts.sacrifice && !opts.onlyMove && opts.secondGap >= 120 && loss < 8) {
     return "Brilhante";
   }
-  if (opts.playedIsBest) return "!!!";
+  if (opts.playedIsBest) return "★";
   const t = Math.min(1, Math.max(0, ((opts.elo ?? 1500) - 400) / 2000));
   const excellent = 8 - t * 6;
   const good = 14 - t * 9;
@@ -246,6 +272,27 @@ export function classifyMove(opts: {
   if (loss < inaccuracy) return "Imprecisão";
   if (loss < mistake) return "Erro";
   return "Gafe";
+}
+
+export function pairedSans(
+  startFen: string,
+  sans: string[],
+): { no: number; white?: { san: string; ply: number }; black?: { san: string; ply: number } }[] {
+  const fields = startFen.split(" ");
+  const blackStarts = fields[1] === "b";
+  let moveNo = Number(fields[5] || "1") || 1;
+  const rows: { no: number; white?: { san: string; ply: number }; black?: { san: string; ply: number } }[] = [];
+  sans.forEach((san, i) => {
+    const isBlack = blackStarts ? i % 2 === 0 : i % 2 === 1;
+    if (!isBlack) {
+      rows.push({ no: moveNo, white: { san, ply: i + 1 } });
+      return;
+    }
+    if (!rows.length || rows[rows.length - 1]!.black) rows.push({ no: moveNo });
+    rows[rows.length - 1]!.black = { san, ply: i + 1 };
+    moveNo += 1;
+  });
+  return rows;
 }
 
 export function toPgn(opts: {
@@ -269,10 +316,16 @@ export function toPgn(opts: {
   if (fenKey(opts.startFen) !== fenKey(START_FEN) || opts.variant960) {
     headers.push(["SetUp", "1"], ["FEN", opts.startFen]);
   }
+  const fields = opts.startFen.split(" ");
+  const blackStarts = fields[1] === "b";
+  let moveNo = Number(fields[5] || "1") || 1;
   let body = "";
   opts.sans.forEach((san, i) => {
-    if (i % 2 === 0) body += `${i / 2 + 1}. `;
+    const isBlack = blackStarts ? i % 2 === 0 : i % 2 === 1;
+    if (!isBlack) body += `${moveNo}. `;
+    else if (i === 0) body += `${moveNo}... `;
     body += `${san} `;
+    if (isBlack) moveNo += 1;
   });
   const head = headers.map(([k, v]) => `[${k} "${v.replaceAll('"', "")}]`).join("\n");
   return `${head}\n\n${body}${opts.result || "*"}\n`;
@@ -316,9 +369,9 @@ export function ucisFromSans(startFen: string, sans: string[]): string[] {
 }
 
 export function formatClock(ms: number): string {
-  const safe = Math.max(0, Math.ceil(ms / 100) * 100);
-  if (safe < 20_000) return (safe / 1000).toFixed(1);
-  const total = Math.ceil(safe / 1000);
+  const left = Math.max(0, Math.floor(ms));
+  if (left < 20_000) return (Math.floor(left / 100) / 10).toFixed(1);
+  const total = Math.floor(left / 1000);
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
@@ -448,7 +501,7 @@ export const ENDGAMES: { id: string; name: string; goal: string; fen: string }[]
   { id: "rr", name: "Torre contra rei", goal: "Corte o rei e suba a torre com o seu rei.", fen: "4k3/8/8/8/8/8/3R4/4K3 w - - 0 1" },
   { id: "bb", name: "Dois bispos", goal: "Empurre o rei para um canto da cor dos bispos.", fen: "8/8/8/4k3/8/8/4BB2/4K3 w - - 0 1" },
   { id: "bn", name: "Bispo e cavalo", goal: "O canto certo é o da cor do bispo. Não tenha pressa.", fen: "8/8/8/3k4/8/8/5BN1/4K3 w - - 0 1" },
-  { id: "pp", name: "Peão passado", goal: "Rei na frente do peão. Oposição decide.", fen: "8/8/8/4k3/8/4P3/4K3/8 w - - 0 1" },
+  { id: "pp", name: "Peão passado", goal: "O rei adversário pode alcançar o peão. Escolte-o até à promoção.", fen: "8/8/8/4k3/8/4P3/4K3/8 w - - 0 1" },
   { id: "lucena", name: "Lucena", goal: "Ponte da torre: afaste o rei preto e promova.", fen: "1K1k4/1P6/8/8/8/8/8/R7 w - - 0 1" },
   { id: "philidor", name: "Philidor", goal: "Pretas defendem. Torre na sexta, xeque por trás quando o peão avança.", fen: "4k3/8/8/3p4/8/8/4K3/r7 b - - 0 1" },
   { id: "qr", name: "Dama contra torre", goal: "Force a torre a afastar-se do rei.", fen: "8/8/8/3k4/8/3r4/3Q4/3K4 w - - 0 1" },

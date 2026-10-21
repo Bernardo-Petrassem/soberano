@@ -101,6 +101,38 @@ function pawnHitsBishop(pos: Chess) {
   return false;
 }
 
+function passedPawn() {
+  for (let n = 0; n < 500; n++) {
+    const file = rnd(8);
+    const rank = 1 + rnd(4);
+    const pawn = file + rank * 8;
+    const dist = 7 - rank;
+    const wkFile = Math.min(7, Math.max(0, file + rnd(3) - 1));
+    const wkRank = Math.min(7, Math.max(0, rank + rnd(3) - 1));
+    const wk = wkFile + wkRank * 8;
+    if (wk === pawn) continue;
+    let bk = rnd(64);
+    for (let k = 0; k < 12 && bk === pawn; k++) bk = rnd(64);
+    const bkFile = bk & 7;
+    const bkRank = bk >> 3;
+    const reach = Math.max(Math.abs(bkFile - file), Math.abs(bkRank - 7));
+    if (reach > dist - 1) continue;
+    const escort = Math.max(Math.abs(wkFile - file), Math.abs(wkRank - rank));
+    if (escort > 2) continue;
+    const pos = build(
+      [
+        { role: "king", color: "white" },
+        { role: "pawn", color: "white" },
+        { role: "king", color: "black" },
+      ],
+      [wk, pawn, bk],
+      "white",
+    );
+    if (pos) return fenOf(pos);
+  }
+  return null;
+}
+
 function lucena() {
   for (let n = 0; n < 250; n++) {
     const file = 1 + rnd(6);
@@ -208,15 +240,7 @@ export function generateEndgame(id: EndgameId): string {
       () => true,
     );
   } else if (id === "pp") {
-    fen = scatter(
-      [
-        { role: "king", color: "white" },
-        { role: "pawn", color: "white" },
-        { role: "king", color: "black" },
-      ],
-      "white",
-      () => true,
-    );
+    fen = passedPawn();
   } else if (id === "lucena") fen = lucena();
   else if (id === "philidor") fen = philidor();
   else if (id === "qr") {

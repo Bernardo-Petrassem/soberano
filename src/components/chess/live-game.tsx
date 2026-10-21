@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, Role } from "chessops/types";
-import { Board } from "@/components/chess/board";
+import { Board, type Premove } from "@/components/chess/board";
 import { EvalBar } from "@/components/chess/eval-bar";
 import { Panel } from "@/components/chess/shell";
 import { formatWatch, useStopwatch } from "@/components/chess/stopwatch";
 import { cpOf, Engine, thinkTime } from "@/lib/chess/engine";
 import { corpus } from "@/lib/chess/corpus";
+import { slipUci, weakenUci } from "@/lib/chess/strength";
 import {
   checkedKing,
   destsOf,
   endingOf,
+  eloDelta,
   fenKey,
   fenOf,
   flagEnding,
@@ -19,6 +21,8 @@ import {
   loadFen,
   needsPromotion,
   opposite,
+  pairedSans,
+  playUciOn,
   positionAt,
   sanAndUci,
   START_FEN,
@@ -41,13 +45,19 @@ export type LiveConfig = {
   startFen?: string;
   variant960?: boolean;
   human: "white" | "black" | "both";
-  bot: { name: string; skill: number; elo: number | null } | null;
+  bot: { name: string; skill: number; elo: number | null; nominal?: number } | null;
   useBook?: boolean;
   opening?: string;
   clock: { initial: number; inc: number } | null;
   tcLabel: string;
   whiteName: string;
   blackName: string;
+  /** Moves already played before the clock starts, kept in the PGN. */
+  prelude?: { sans: string[]; ucis: string[] };
+  rated?: boolean;
+  pace?: "instant" | "human";
+  /** When set and the human is black, the bot deliberately plays worse as this Elo drops. */
+  slipElo?: number | null;
   onUserMove?: (uci: string, ply: number) => void;
   inbound?: { nonce: number; uci: string; ply: number } | null;
   externalEnd?: { nonce: number; ending: Ending } | null;
@@ -57,14 +67,23 @@ export type LiveConfig = {
 
 function fresh(config: LiveConfig) {
   const startFen = config.startFen || START_FEN;
-  const pos = loadFen(startFen);
-  const turn = pos?.turn ?? "white";
+  const ucis = [...(config.prelude?.ucis ?? [])];
+  const sans = [...(config.prelude?.sans ?? [])].slice(0, ucis.length);
+  const keys = [fenKey(startFen)];
+  const cursorPos = loadFen(startFen);
+  if (cursorPos) {
+    for (const uci of ucis) {
+      playUciOn(cursorPos, uci);
+      keys.push(fenKey(fenOf(cursorPos)));
+    }
+  }
+  const turn = cursorPos?.turn ?? loadFen(startFen)?.turn ?? "white";
   return {
     startFen,
-    ucis: [] as string[],
-    sans: [] as string[],
-    keys: [fenKey(startFen)],
-    cursor: 0,
+    ucis,
+    sans,
+    keys,
+    cursor: ucis.length,
     redo: [] as string[],
     ending: null as Ending | null,
     clock: config.clock
@@ -94,7 +113,11 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   const [now, setNow] = useState(() => performance.now());
   const [whiteCp, setWhiteCp] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [ratingDelta, setRatingDelta] = useState<number | null>(null);
+  const [premoves, setPremoves] = useState<Premove[]>([]);
   const archived = useRef(false);
+  const began = useRef(performance.now());
+  const premoveLock = useRef(false);
   const sound = useVault((s) => s.sound);
   const archive = useVault((s) => s.archive);
   const remote = Boolean(config.onUserMove);
@@ -134,16 +157,26 @@ export function LiveGame({ config }: { config: LiveConfig }) {
 
   useEffect(() => {
     if (!state.clock || state.ending) return;
-    const id = window.setInterval(() => setNow(performance.now()), 100);
+    const id = window.setInterval(() => setNow(performance.now()), 50);
     return () => window.clearInterval(id);
   }, [state.clock, state.ending]);
 
   useEffect(() => {
     if (!state.clock || state.ending || !pos) return;
-    const left = remain(state.clock, state.clock.turn, now, false);
+    const left = remain(state.clock, state.clock.turn, performance.now(), false);
     if (left > 0) return;
-    const ending = flagEnding(pos, state.clock.turn);
-    setState((s) => (s.ending ? s : { ...s, ending, clock: s.clock ? { ...s.clock, running: false } : s.clock }));
+    const loser = state.clock.turn;
+    const ending = flagEnding(pos, loser);
+    setState((s) => {
+      if (s.ending || !s.clock) return s;
+      const still = remain(s.clock, s.clock.turn, performance.now(), false);
+      if (still > 0) return s;
+      return {
+        ...s,
+        ending,
+        clock: { ...s.clock, [s.clock.turn]: 0, running: false },
+      };
+    });
   }, [now, state.clock, state.ending, pos]);
 
   function pushMove(uci: string, san: string, mover: Color) {
@@ -193,6 +226,24 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   }
 
   useEffect(() => {
+    if (!userTurn || state.ending || !atEnd || !pos || !premoves.length || premoveLock.current) return;
+    const pm = premoves[0]!;
+    const move = legalMove(pos, pm.from, pm.to, pm.promotion);
+    if (!move) {
+      setPremoves([]);
+      return;
+    }
+    premoveLock.current = true;
+    const packed = sanAndUci(pos, move);
+    setPremoves((q) => q.slice(1));
+    pushMove(packed.uci, packed.san, pos.turn);
+    window.setTimeout(() => {
+      premoveLock.current = false;
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userTurn, state.ucis.length, state.ending, premoves]);
+
+  useEffect(() => {
     const inbound = config.inbound;
     if (!inbound || state.ending) return;
     if (inbound.ply !== state.ucis.length) return;
@@ -218,17 +269,27 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     const clockLeft = state.clock ? remain(state.clock, turn, performance.now(), false) : null;
     void (async () => {
       try {
-        const book = config.useBook ? await corpus() : null;
-        let uci = book?.bookMove(fenOf(pos), config.opening) ?? "";
+        let uci = "";
+        const nominal = config.bot!.nominal ?? config.bot!.elo ?? 1500;
+        const slip = config.slipElo != null && config.human === "black";
+        if (!slip) {
+          const book = config.useBook ? await corpus() : null;
+          uci = book?.bookMove(fenOf(pos), config.opening) ?? "";
+        }
         if (!uci) {
           const engine = Engine.shared();
+          const pace = config.pace === "instant" ? 40 : thinkTime(config.bot!.skill, clockLeft);
           const res = await engine.go(fenOf(pos), {
             skill: config.bot!.skill,
             elo: config.bot!.elo,
-            movetime: thinkTime(config.bot!.skill, clockLeft),
-            multipv: 1,
+            movetime: pace,
+            multipv: slip ? 4 : 1,
           });
-          uci = res.uci;
+          const legal: string[] = [];
+          for (const [from, tos] of Object.entries(destsOf(pos))) {
+            for (const to of tos) legal.push(needsPromotion(pos, from, to) ? `${from}${to}q` : `${from}${to}`);
+          }
+          uci = slip ? slipUci(res, config.slipElo ?? nominal, legal) : weakenUci(pos, res.uci, nominal);
         }
         if (cancel) return;
         setState((s) => {
@@ -297,12 +358,29 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       ucis: state.ucis,
       variant960: Boolean(config.variant960),
       tc: config.tcLabel,
+      durationMs: Math.round(performance.now() - began.current),
+      botName: config.bot?.name,
+      human: config.human,
     };
     archive(game);
+    if (config.rated && config.bot && config.human !== "both") {
+      const me = useVault.getState().rating;
+      const opp = config.bot.nominal ?? config.bot.elo ?? 2850;
+      const winner = state.ending.winner;
+      const score = !winner ? 0.5 : winner === config.human ? 1 : 0;
+      const delta = eloDelta(me, opp, score);
+      setRatingDelta(delta);
+      useVault.getState().setRating(me + delta);
+      const after = useVault.getState().rating;
+      useVault.setState((s) => ({
+        games: s.games.map((g) => (g.id === game.id ? { ...g, ratingBefore: me, ratingAfter: after } : g)),
+      }));
+    }
   }, [state.ending, archive, config, state.sans, state.startFen, state.ucis]);
 
   function undo() {
     if (remote || state.thinking) return;
+    setPremoves([]);
     setState((s) => {
       if (!s.ucis.length) return s;
       let cut = 1;
@@ -357,6 +435,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       if (e.key === "ArrowLeft") setState((s) => ({ ...s, cursor: Math.max(0, s.cursor - 1) }));
       if (e.key === "ArrowRight") setState((s) => ({ ...s, cursor: Math.min(s.ucis.length, s.cursor + 1) }));
       if (e.key === "f") setOrientation((o) => opposite(o));
+      if (e.key === "Escape") setPremoves([]);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -405,12 +484,33 @@ export function LiveGame({ config }: { config: LiveConfig }) {
                 sideToMove={turn}
                 isPromotion={(from, to) => needsPromotion(pos, from, to)}
                 onMove={tryMove}
+                premoves={premoves}
+                allowPremove={config.human !== "both" && !state.ending && atEnd && !userTurn}
+                premoveColor={config.human === "black" ? "black" : "white"}
+                onPremove={(from, to, promotion) =>
+                  setPremoves((q) => [...q, { from, to, promotion }].slice(-5))
+                }
               />
             </div>
           </div>
         )}
         <div className="mt-3">
           <ClockPill name={orientation === "white" ? config.whiteName : config.blackName} ms={orientation === "white" ? whiteMs : blackMs} active={Boolean(state.clock) && turn === orientation && !state.ending} show={Boolean(state.clock)} />
+        </div>
+        {premoves.length > 0 && <p className="mt-2 text-xs text-muted">Pré-lance preparado. Esc apaga.</p>}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <button type="button" className="btn" onClick={() => setState((s) => ({ ...s, cursor: 0 }))}>
+            Início
+          </button>
+          <button type="button" className="btn" onClick={undo} disabled={remote || state.ucis.length === 0}>
+            Desfazer
+          </button>
+          <button type="button" className="btn" onClick={redo} disabled={remote || state.redo.length === 0}>
+            Refazer
+          </button>
+          <button type="button" className="btn" onClick={() => setState((s) => ({ ...s, cursor: s.ucis.length }))}>
+            Fim
+          </button>
         </div>
       </div>
       <Panel>
@@ -423,47 +523,35 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         {state.ending && (
           <p className="mt-3 rounded-xl bg-felt px-3 py-2 text-sm">
             {state.ending.result} · {state.ending.reason}
+            {ratingDelta != null ? ` · rating ${ratingDelta > 0 ? "+" : ""}${ratingDelta}` : ""}
           </p>
         )}
-        {state.ending && (
-          <button type="button" className="btn mt-3" onClick={copyPgn}>
-            {copied ? "PGN copiado" : "Copiar PGN"}
-          </button>
-        )}
+        <button type="button" className="btn mt-3" onClick={copyPgn}>
+          {copied ? "PGN copiado" : "Copiar PGN"}
+        </button>
         {state.note && <p className="mt-2 text-sm text-blood">{state.note}</p>}
-        {!atEnd && (
-          <button type="button" className="btn mt-3 w-full" onClick={() => setState((s) => ({ ...s, cursor: s.ucis.length }))}>
-            Voltar ao vivo
-          </button>
-        )}
         <ol className="mt-4 max-h-72 space-y-1 overflow-auto text-sm">
-          {state.sans.map((san, i) =>
-            i % 2 === 0 ? (
-              <li key={i} className="grid grid-cols-[2rem_1fr_1fr] gap-1">
-                <span className="text-muted">{i / 2 + 1}.</span>
-                <button type="button" className={state.cursor === i + 1 ? "text-brass" : ""} onClick={() => setState((s) => ({ ...s, cursor: i + 1 }))}>
-                  {san}
+          {pairedSans(state.startFen, state.sans).map((row) => (
+            <li key={row.white?.ply ?? row.black?.ply} className="grid grid-cols-[2.5rem_1fr_1fr] gap-1">
+              <span className="text-muted">{row.no}.</span>
+              {row.white ? (
+                <button type="button" className={state.cursor === row.white.ply ? "text-brass" : ""} onClick={() => setState((s) => ({ ...s, cursor: row.white!.ply }))}>
+                  {row.white.san}
                 </button>
-                {state.sans[i + 1] && (
-                  <button type="button" className={state.cursor === i + 2 ? "text-brass" : ""} onClick={() => setState((s) => ({ ...s, cursor: i + 2 }))}>
-                    {state.sans[i + 1]}
-                  </button>
-                )}
-              </li>
-            ) : null,
-          )}
+              ) : (
+                <span className="text-muted">…</span>
+              )}
+              {row.black ? (
+                <button type="button" className={state.cursor === row.black.ply ? "text-brass" : ""} onClick={() => setState((s) => ({ ...s, cursor: row.black!.ply }))}>
+                  {row.black.san}
+                </button>
+              ) : (
+                <span />
+              )}
+            </li>
+          ))}
         </ol>
         <div className="mt-4 flex flex-wrap gap-2">
-          {!remote && (
-            <>
-              <button type="button" className="btn" onClick={undo}>
-                Desfazer
-              </button>
-              <button type="button" className="btn" onClick={redo}>
-                Refazer
-              </button>
-            </>
-          )}
           {remote && (
             <button type="button" className="btn" onClick={config.onDrawOffer} disabled={Boolean(state.ending)}>
               Propor empate

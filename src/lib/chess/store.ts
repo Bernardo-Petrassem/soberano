@@ -19,6 +19,34 @@ export type ArchivedGame = {
   variant960: boolean;
   tc: string;
   marks?: Mark[];
+  /** 2 = estrela para o melhor lance e !!! só para sacrifício que vira a partida. */
+  markVersion?: number;
+  durationMs?: number;
+  botName?: string;
+  human?: "white" | "black" | "both";
+  ratingBefore?: number;
+  ratingAfter?: number;
+};
+
+export type RatingPoint = { at: string; rating: number };
+
+export type PuzzleAttempt = {
+  puzzleId: string;
+  fen: string;
+  line: string[];
+  themes: string[];
+  rating: number;
+  ok: boolean;
+  at: string;
+  played: string[];
+  wrong?: string;
+};
+
+export type DrillSave = {
+  openings: { eco: string; family: string; name: string; moves: string }[];
+  endgames: string[];
+  elo: number;
+  color: "white" | "black";
 };
 
 type Vault = {
@@ -29,6 +57,9 @@ type Vault = {
   service: boolean;
   friends: Friend[];
   games: ArchivedGame[];
+  ratingLog: RatingPoint[];
+  attempts: PuzzleAttempt[];
+  drill: DrillSave | null;
   setName: (name: string) => void;
   ensureId: () => string;
   setRating: (rating: number) => void;
@@ -40,6 +71,8 @@ type Vault = {
   archive: (game: ArchivedGame) => void;
   setMarks: (id: string, marks: Mark[]) => void;
   removeGame: (id: string) => void;
+  logAttempt: (attempt: PuzzleAttempt) => void;
+  saveDrill: (drill: DrillSave) => void;
 };
 
 function makeId(): string {
@@ -62,13 +95,24 @@ export const useVault = create<Vault>()(
       service: false,
       friends: [],
       games: [],
+      ratingLog: [],
+      attempts: [],
+      drill: null,
       setName: (name) => set({ name: name.slice(0, 32) || "Jogador" }),
       ensureId: () => {
         const id = get().peerId || makeId();
         if (!get().peerId) set({ peerId: id });
         return id;
       },
-      setRating: (rating) => set({ rating: Math.max(400, Math.min(2800, Math.round(rating))) }),
+      setRating: (rating) =>
+        set((s) => {
+          const next = Math.max(100, Math.min(3600, Math.round(rating) || s.rating));
+          if (next === s.rating) return s;
+          return {
+            rating: next,
+            ratingLog: [...s.ratingLog, { at: new Date().toISOString(), rating: next }].slice(-400),
+          };
+        }),
       setSound: (sound) => set({ sound }),
       setService: (service) => set({ service }),
       addFriend: (friend) =>
@@ -85,8 +129,10 @@ export const useVault = create<Vault>()(
         })),
       archive: (game) => set((s) => ({ games: [game, ...s.games.filter((g) => g.id !== game.id)].slice(0, 80) })),
       setMarks: (id, marks) =>
-        set((s) => ({ games: s.games.map((g) => (g.id === id ? { ...g, marks } : g)) })),
+        set((s) => ({ games: s.games.map((g) => (g.id === id ? { ...g, marks, markVersion: 2 } : g)) })),
       removeGame: (id) => set((s) => ({ games: s.games.filter((g) => g.id !== id) })),
+      logAttempt: (attempt) => set((s) => ({ attempts: [attempt, ...s.attempts].slice(0, 80) })),
+      saveDrill: (drill) => set({ drill }),
     }),
     {
       name: "soberano-vault",
@@ -99,6 +145,9 @@ export const useVault = create<Vault>()(
         service: s.service,
         friends: s.friends,
         games: s.games,
+        ratingLog: s.ratingLog,
+        attempts: s.attempts,
+        drill: s.drill,
       }),
     },
   ),

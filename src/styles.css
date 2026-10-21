@@ -59,6 +59,16 @@
     color: var(--color-ink);
     border-color: transparent;
   }
+  .btn-blood {
+    background: var(--color-blood);
+    color: var(--color-cream);
+    border-color: transparent;
+  }
+  .btn-blood-quiet {
+    background: color-mix(in srgb, var(--color-blood) 32%, var(--color-panel));
+    color: var(--color-cream);
+    border-color: transparent;
+  }
   .nav-link {
     flex-shrink: 0;
     border-radius: 999px;
