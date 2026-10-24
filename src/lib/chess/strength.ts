@@ -6,22 +6,28 @@ export const ELO_MIN = 100;
 export const ELO_MAX = 3600;
 
 export const STRENGTHS: { elo: number; label: string }[] = [
-  { elo: 100, label: "100 · primeiros passos" },
-  { elo: 400, label: "400 · novato" },
-  { elo: 600, label: "600 · aprendiz" },
-  { elo: 900, label: "900 · clube" },
-  { elo: 1200, label: "1200 · amador" },
-  { elo: 1500, label: "1500 · candidato" },
-  { elo: 1800, label: "1800 · forte" },
-  { elo: 2100, label: "2100 · mestre" },
-  { elo: 2400, label: "2400 · mestre FIDE" },
-  { elo: 2800, label: "2800 · grande mestre" },
-  { elo: 3200, label: "3200 · elite" },
-  { elo: 3600, label: "3600 · Stockfish" },
+  { elo: 100, label: "Iniciante (100)" },
+  { elo: 400, label: "Novato (400)" },
+  { elo: 600, label: "Aprendiz (600)" },
+  { elo: 900, label: "Clube (900)" },
+  { elo: 1200, label: "Amador (1200)" },
+  { elo: 1500, label: "Candidato (1500)" },
+  { elo: 1800, label: "Forte (1800)" },
+  { elo: 2100, label: "Mestre (2100)" },
+  { elo: 2400, label: "Mestre FIDE (2400)" },
+  { elo: 2800, label: "Grande mestre (2800)" },
+  { elo: 3200, label: "Elite (3200)" },
+  { elo: 3600, label: "Stockfish (3600)" },
 ];
 
 export function clampElo(elo: number): number {
   return Math.max(ELO_MIN, Math.min(ELO_MAX, Math.round(elo) || ELO_MIN));
+}
+
+export function strengthName(elo: number): string {
+  const exact = STRENGTHS.find((s) => s.elo === elo);
+  if (exact) return exact.label;
+  return `Stockfish (${clampElo(elo)})`;
 }
 
 /** Maps a nominal Elo onto Stockfish. 3600 is full strength; below 800 the skill level carries the weakness. */

@@ -80,6 +80,19 @@ export function opposite(color: Color): Color {
   return color === "white" ? "black" : "white";
 }
 
+export function isCapture(pos: Chess, from: string, to: string): boolean {
+  const dest = parseSquare(to);
+  const src = parseSquare(from);
+  if (dest == null) return false;
+  if (pos.board.get(dest)) return true;
+  return pos.epSquare === dest && src != null && pos.board.get(src)?.role === "pawn";
+}
+
+export function openingColor(moves: string): Color {
+  const plies = moves.split(/\s+/).filter(Boolean).length;
+  return plies % 2 === 0 ? "black" : "white";
+}
+
 export function loadFen(fen: string): Chess | null {
   const setup = parseFen(fen.trim());
   if (setup.isErr) return null;

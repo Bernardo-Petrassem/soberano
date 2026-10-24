@@ -16,6 +16,7 @@ import {
   fenOf,
   flagEnding,
   formatClock,
+  isCapture,
   lastSquares,
   legalMove,
   loadFen,
@@ -29,8 +30,8 @@ import {
   toPgn,
   type Ending,
 } from "@/lib/chess/logic";
-import { knock } from "@/lib/chess/sound";
-import { useVault, type ArchivedGame } from "@/lib/chess/store";
+import { capture, knock } from "@/lib/chess/sound";
+import { useVault, displayName, type ArchivedGame } from "@/lib/chess/store";
 
 type Clock = {
   white: number;
@@ -63,6 +64,8 @@ export type LiveConfig = {
   externalEnd?: { nonce: number; ending: Ending } | null;
   onResignRemote?: () => void;
   onDrawOffer?: () => void;
+  onEnd?: (ending: Ending) => void;
+  showHint?: boolean;
 };
 
 function fresh(config: LiveConfig) {
@@ -115,6 +118,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   const [copied, setCopied] = useState(false);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
   const [premoves, setPremoves] = useState<Premove[]>([]);
+  const [hintSan, setHintSan] = useState("");
   const archived = useRef(false);
   const began = useRef(performance.now());
   const premoveLock = useRef(false);
@@ -162,13 +166,15 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   }, [state.clock, state.ending]);
 
   useEffect(() => {
-    if (!state.clock || state.ending || !pos) return;
+    if (!state.clock?.running || state.ending) return;
     const left = remain(state.clock, state.clock.turn, performance.now(), false);
     if (left > 0) return;
+    const live = positionAt(state.startFen, state.ucis, state.ucis.length);
+    if (!live) return;
     const loser = state.clock.turn;
-    const ending = flagEnding(pos, loser);
+    const ending = flagEnding(live, loser);
     setState((s) => {
-      if (s.ending || !s.clock) return s;
+      if (s.ending || !s.clock?.running) return s;
       const still = remain(s.clock, s.clock.turn, performance.now(), false);
       if (still > 0) return s;
       return {
@@ -177,10 +183,40 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         clock: { ...s.clock, [s.clock.turn]: 0, running: false },
       };
     });
-  }, [now, state.clock, state.ending, pos]);
+  }, [now, state.clock, state.ending, state.startFen, state.ucis]);
+
+  useEffect(() => {
+    if (state.ending) config.onEnd?.(state.ending);
+  }, [state.ending, config.onEnd]);
+
+  useEffect(() => {
+    if (!config.showHint || !userTurn || !viewFen) {
+      setHintSan("");
+      return;
+    }
+    let cancel = false;
+    void Engine.shared()
+      .go(viewFen, { movetime: 240, skill: 20, elo: null })
+      .then((res) => {
+        if (cancel || !res.uci) return;
+        const live = loadFen(viewFen);
+        if (!live) return;
+        const promo = res.uci[4];
+        const role = promo === "q" ? "queen" : promo === "r" ? "rook" : promo === "b" ? "bishop" : promo === "n" ? "knight" : undefined;
+        const move = legalMove(live, res.uci.slice(0, 2), res.uci.slice(2, 4), role);
+        if (!move || cancel) return;
+        setHintSan(sanAndUci(live, move).san);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [config.showHint, userTurn, viewFen]);
 
   function pushMove(uci: string, san: string, mover: Color) {
-    knock(sound);
+    const before = positionAt(state.startFen, state.ucis, state.ucis.length);
+    if (before && isCapture(before, uci.slice(0, 2), uci.slice(2, 4))) capture(sound);
+    else knock(sound);
     setState((s) => {
       if (s.ending) return s;
       const ucis = [...s.ucis, uci];
@@ -272,13 +308,15 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         let uci = "";
         const nominal = config.bot!.nominal ?? config.bot!.elo ?? 1500;
         const slip = config.slipElo != null && config.human === "black";
+        let branching = 1;
+        for (const tos of Object.values(destsOf(pos))) branching += tos.length;
         if (!slip) {
           const book = config.useBook ? await corpus() : null;
           uci = book?.bookMove(fenOf(pos), config.opening) ?? "";
         }
         if (!uci) {
           const engine = Engine.shared();
-          const pace = config.pace === "instant" ? 40 : thinkTime(config.bot!.skill, clockLeft);
+          const pace = config.pace === "instant" ? 80 : thinkTime(nominal, clockLeft, branching);
           const res = await engine.go(fenOf(pos), {
             skill: config.bot!.skill,
             elo: config.bot!.elo,
@@ -340,15 +378,15 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     const game: ArchivedGame = {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
-      white: config.whiteName,
-      black: config.blackName,
+      white: displayName(config.whiteName, "Brancas"),
+      black: displayName(config.blackName, "Pretas"),
       result: state.ending.result,
       reason: state.ending.reason,
       pgn: toPgn({
         startFen: state.startFen,
         sans: state.sans,
-        white: config.whiteName,
-        black: config.blackName,
+        white: displayName(config.whiteName, "Brancas"),
+        black: displayName(config.blackName, "Pretas"),
         result: state.ending.result,
         variant960: config.variant960,
         event: config.tcLabel,
@@ -378,14 +416,23 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     }
   }, [state.ending, archive, config, state.sans, state.startFen, state.ucis]);
 
+  const timedOut = state.ending?.reason.startsWith("Tempo") ?? false;
+
   function undo() {
-    if (remote || state.thinking) return;
+    if (remote || (state.thinking && !timedOut)) return;
     setPremoves([]);
+    if (timedOut) {
+      setState((s) => ({ ...s, cursor: Math.max(0, s.cursor - 1) }));
+      return;
+    }
     setState((s) => {
       if (!s.ucis.length) return s;
       let cut = 1;
       if (config.bot && config.human !== "both" && s.ucis.length >= 2) cut = 2;
       const ucis = s.ucis.slice(0, -cut);
+      const next = positionAt(s.startFen, ucis, ucis.length);
+      const turnNow = next?.turn ?? s.clock?.turn ?? "white";
+      const left = s.clock ? s.clock[turnNow] : 0;
       return {
         ...s,
         redo: [...s.ucis.slice(-cut), ...s.redo],
@@ -396,13 +443,18 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         ending: null,
         thinking: false,
         epoch: s.epoch + 1,
-        clock: s.clock ? { ...s.clock, running: true, stamp: performance.now() } : s.clock,
+        clock: s.clock ? { ...s.clock, turn: turnNow, running: left > 0, stamp: performance.now() } : s.clock,
       };
     });
   }
 
   function redo() {
-    if (remote || !state.redo.length) return;
+    if (remote) return;
+    if (timedOut) {
+      setState((s) => ({ ...s, cursor: Math.min(s.ucis.length, s.cursor + 1) }));
+      return;
+    }
+    if (!state.redo.length || state.ending) return;
     const uci = state.redo[0]!;
     const current = positionAt(state.startFen, state.ucis, state.ucis.length);
     if (!current) return;
@@ -413,7 +465,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     const move = legalMove(current, from, to, role);
     if (!move) return;
     const packed = sanAndUci(current, move);
-    setState((s) => ({ ...s, redo: s.redo.slice(1) }));
+    setState((s) => (s.ending ? s : { ...s, redo: s.redo.slice(1) }));
     pushMove(packed.uci, packed.san, current.turn);
   }
 
@@ -502,10 +554,10 @@ export function LiveGame({ config }: { config: LiveConfig }) {
           <button type="button" className="btn" onClick={() => setState((s) => ({ ...s, cursor: 0 }))}>
             Início
           </button>
-          <button type="button" className="btn" onClick={undo} disabled={remote || state.ucis.length === 0}>
+          <button type="button" className="btn" onClick={undo} disabled={remote || (timedOut ? state.cursor === 0 : state.ucis.length === 0) || (state.thinking && !timedOut)}>
             Desfazer
           </button>
-          <button type="button" className="btn" onClick={redo} disabled={remote || state.redo.length === 0}>
+          <button type="button" className="btn" onClick={redo} disabled={remote || (timedOut ? state.cursor >= state.ucis.length : state.redo.length === 0 || Boolean(state.ending))}>
             Refazer
           </button>
           <button type="button" className="btn" onClick={() => setState((s) => ({ ...s, cursor: s.ucis.length }))}>
@@ -517,9 +569,10 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         <p className="font-display text-lg text-brass">{config.tcLabel}</p>
         {!config.clock && <p className="font-display mt-1 text-3xl tabular-nums">{formatWatch(watch.ms)}</p>}
         <p className="mt-1 text-sm text-muted">
-          {config.whiteName} contra {config.blackName}
+          {displayName(config.whiteName, "Brancas")} contra {displayName(config.blackName, "Pretas")}
           {state.thinking ? " · a pensar…" : ""}
         </p>
+        {config.showHint && hintSan && !state.ending && <p className="mt-2 text-sm text-brass">Sugestão: {hintSan}</p>}
         {state.ending && (
           <p className="mt-3 rounded-xl bg-felt px-3 py-2 text-sm">
             {state.ending.result} · {state.ending.reason}

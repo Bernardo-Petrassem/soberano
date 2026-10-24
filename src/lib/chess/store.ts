@@ -75,6 +75,25 @@ type Vault = {
   saveDrill: (drill: DrillSave) => void;
 };
 
+export function displayName(raw: string | undefined, fallback = "Jogador"): string {
+  const name = (raw ?? "").trim();
+  if (!name || /https?:|localhost|127\.0\.0\.1|\bamigos\b|:\d{2,5}/i.test(name)) return fallback;
+  return name.slice(0, 32);
+}
+
+export function formatWhen(iso: string | undefined): string {
+  if (!iso) return "Sem informação";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Sem informação";
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function makeId(): string {
   return `p${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
 }
@@ -98,7 +117,7 @@ export const useVault = create<Vault>()(
       ratingLog: [],
       attempts: [],
       drill: null,
-      setName: (name) => set({ name: name.slice(0, 32) || "Jogador" }),
+      setName: (name) => set({ name: displayName(name) }),
       ensureId: () => {
         const id = get().peerId || makeId();
         if (!get().peerId) set({ peerId: id });

@@ -5,7 +5,7 @@ import { Board } from "@/components/chess/board";
 import { Evolution } from "@/components/chess/evolution";
 import { checkedKing, fenOf, lastSquares, MARK_CLASS, pairedSans, positionAt } from "@/lib/chess/logic";
 import { reviewLine } from "@/lib/chess/review";
-import { useHydrated, useVault } from "@/lib/chess/store";
+import { displayName, formatWhen, useHydrated, useVault } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/historico")({ component: Historico });
 
@@ -64,10 +64,10 @@ function Historico() {
                   }}
                 >
                   <span className="block text-sm">
-                    {g.white} — {g.black}
+                    {displayName(g.white, "Brancas")} — {displayName(g.black, "Pretas")}
                   </span>
                   <span className="text-xs text-muted">
-                    {g.result} · {g.reason} · {g.tc}
+                    {formatWhen(g.date)} · {g.result} · {g.reason} · {g.tc}
                   </span>
                 </button>
               </li>

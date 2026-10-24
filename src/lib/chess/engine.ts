@@ -151,8 +151,14 @@ export class Engine {
   }
 }
 
-export function thinkTime(skill: number, clockMs: number | null): number {
-  const base = 70 + skill * 35;
-  if (clockMs == null) return Math.min(700, base);
-  return Math.max(40, Math.min(base, Math.floor(clockMs / 30), 500));
+/** Human pace. Higher Elo searches longer, so the delay grows with the depth that Elo can use. */
+export function thinkTime(nominal: number, clockMs: number | null, branching = 20): number {
+  const elo = Math.max(100, Math.min(3600, nominal || 1500));
+  const t = (elo - 100) / 3500;
+  const depth = 4 + Math.round(t * 14);
+  const busy = Math.min(1.45, 0.75 + Math.max(1, branching) / 45);
+  const want = Math.round((500 + depth * depth * 32) * busy);
+  if (clockMs == null) return Math.min(14000, Math.max(700, want));
+  const budget = Math.max(280, Math.floor(clockMs / Math.max(6, 20 - depth)));
+  return Math.max(220, Math.min(want, budget, Math.max(180, clockMs - 40), 14000));
 }

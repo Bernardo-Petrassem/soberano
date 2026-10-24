@@ -239,7 +239,12 @@ export function Board({
             background: dark ? "var(--color-dark-sq)" : "var(--color-light-sq)",
           }}
         >
-          {fromSq && <span className="absolute inset-0" style={{ background: "rgba(255,255,255,0.72)" }} />}
+          {fromSq && (
+            <span
+              className="absolute inset-0"
+              style={{ background: "#fffaf0", boxShadow: "inset 0 0 0 4px rgba(74, 42, 18, 0.72)" }}
+            />
+          )}
           {toSq && <span className="absolute inset-0" style={{ background: "rgba(255,214,40,0.78)" }} />}
           {isSel && <span className="absolute inset-0" style={{ boxShadow: "inset 0 0 0 3px var(--color-brass)" }} />}
           {marked && <span className="absolute inset-1 rounded-full" style={{ background: "color-mix(in srgb, var(--color-blood) 45%, transparent)" }} />}

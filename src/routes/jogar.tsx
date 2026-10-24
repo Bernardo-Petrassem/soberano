@@ -7,8 +7,8 @@ import { StrengthField } from "@/components/chess/strength-field";
 import { corpus, type Opening } from "@/lib/chess/corpus";
 import { fenFrom960, loadFen, START_FEN, TIME_CONTROLS, type TimeId } from "@/lib/chess/logic";
 import { publicUrl } from "@/lib/chess/public-url";
-import { eloToEngine } from "@/lib/chess/strength";
-import { useHydrated, useVault } from "@/lib/chess/store";
+import { eloToEngine, strengthName } from "@/lib/chess/strength";
+import { displayName, useHydrated, useVault } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/jogar")({ component: Jogar });
 
@@ -60,7 +60,7 @@ function Jogar() {
   function start() {
     const side = color === "random" ? (Math.random() < 0.5 ? "white" : "black") : color;
     const tuned = eloToEngine(elo);
-    const bot = local ? null : { name: `Stockfish ${tuned.nominal}`, skill: tuned.skill, elo: tuned.elo, nominal: tuned.nominal };
+    const bot = local ? null : { name: strengthName(tuned.nominal), skill: tuned.skill, elo: tuned.elo, nominal: tuned.nominal };
     const human = bot ? side : "both";
     const typed = loadFen(fenText.trim());
     const startFen = customOn && typed ? fenText.trim() : variant === "960" ? fenFrom960(idx) : START_FEN;
@@ -73,7 +73,7 @@ function Jogar() {
         : seconds && !minutes
           ? `${seconds}s${inc ? `+${inc}` : ""}`
           : `${minutes}+${inc}`;
-    const me = name || "Jogador";
+    const me = displayName(name);
     const whiteName = !bot ? "Brancas" : side === "black" ? bot.name : me;
     const blackName = !bot ? "Pretas" : side === "white" ? bot.name : me;
     setGame({

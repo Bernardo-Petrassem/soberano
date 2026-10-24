@@ -100,6 +100,9 @@ function Analise() {
   const [train, setTrain] = useState(false);
   const [trainBot, setTrainBot] = useState<(typeof BOTS)[number]["id"] | "local">("clube");
   const [trainColor, setTrainColor] = useState<Color>("white");
+  const [playOpen, setPlayOpen] = useState(false);
+  const [hintOn, setHintOn] = useState(false);
+  const [hintSan, setHintSan] = useState("");
   const [round, setRound] = useState(0);
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState("");
@@ -119,6 +122,13 @@ function Analise() {
         if (engineOn) setLines(res);
         const cp = cpOf(res);
         setWhiteCp(side === "white" ? cp : -cp);
+        if (hintOn && res.uci) {
+          const live = loadFen(view);
+          const promo = res.uci[4];
+          const role = promo === "q" ? "queen" : promo === "r" ? "rook" : promo === "b" ? "bishop" : promo === "n" ? "knight" : undefined;
+          const move = live ? legalMove(live, res.uci.slice(0, 2), res.uci.slice(2, 4), role) : null;
+          setHintSan(move && live ? sanAndUci(live, move).san : "");
+        } else setHintSan("");
       })
       .catch(() => {
         if (!cancel) setNote("Motor indisponível.");
@@ -126,7 +136,7 @@ function Analise() {
     return () => {
       cancel = true;
     };
-  }, [engineOn, view]);
+  }, [engineOn, view, hintOn]);
 
   useEffect(() => {
     void corpus().then((c) => setNames(c.namesAt(view)));
@@ -196,11 +206,12 @@ function Analise() {
             startFen: fen,
             prelude: { sans: sans.slice(0, cursor), ucis: ucis.slice(0, cursor) },
             human: local ? "both" : trainColor,
-            bot: local ? null : { name: bot.name, skill: bot.skill, elo: bot.elo },
+            bot: local ? null : { name: bot.elo ? `${bot.name} (${bot.elo})` : "Stockfish (3600)", skill: bot.skill, elo: bot.elo },
             clock: null,
             tcLabel: local ? "Análise a duas" : `Treino · ${bot.name}`,
-            whiteName: local ? "Brancas" : youWhite ? "Você" : bot.name,
-            blackName: local ? "Pretas" : youWhite ? bot.name : "Você",
+            whiteName: local ? "Brancas" : youWhite ? "Você" : bot.elo ? `${bot.name} (${bot.elo})` : "Stockfish (3600)",
+            blackName: local ? "Pretas" : youWhite ? (bot.elo ? `${bot.name} (${bot.elo})` : "Stockfish (3600)") : "Você",
+            showHint: hintOn,
           }}
         />
       </Shell>
@@ -264,36 +275,48 @@ function Analise() {
               Fim
             </button>
           </div>
-          <div className="mt-3 space-y-3">
-            <Choice
-              label="Treinar contra"
-              value={trainBot}
-              onChange={setTrainBot}
-              options={[
-                { value: "local", label: "Duas pessoas, neste ecrã" },
-                ...BOTS.map((b) => ({ value: b.id, label: b.elo ? `${b.name} ${b.elo}` : `${b.name} total` })),
-              ]}
-            />
-            <Choice
-              label="A sua cor"
-              value={trainColor}
-              onChange={setTrainColor}
-              options={[
-                { value: "white", label: "Brancas" },
-                { value: "black", label: "Pretas" },
-              ]}
-            />
-            <button type="button" className="btn btn-primary" onClick={() => setTrain(true)}>
-              Treinar desta posição
-            </button>
-            <button type="button" className="btn" onClick={() => setEngineOn((v) => !v)}>
-              {engineOn ? "Desligar motor" : "Ligar motor"}
-            </button>
-          </div>
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={hintOn} onChange={(e) => setHintOn(e.target.checked)} />
+            Sugestão do Stockfish
+          </label>
+          {hintOn && <p className="mt-2 text-sm text-brass">{hintSan ? `Sugestão: ${hintSan}` : "A calcular a sugestão…"}</p>}
+          <button type="button" className="btn mt-3" onClick={() => setEngineOn((v) => !v)}>
+            {engineOn ? "Desligar motor" : "Ligar motor"}
+          </button>
         </div>
         <div className="space-y-4">
           <Panel>
-            <h1 className="font-display text-2xl">Análise</h1>
+            <div className="flex items-center justify-between gap-2">
+              <h1 className="font-display text-2xl">Análise</h1>
+              <button type="button" className={playOpen ? "btn btn-primary" : "btn"} onClick={() => setPlayOpen((v) => !v)}>
+                {playOpen ? "Fechar" : "Jogar daqui"}
+              </button>
+            </div>
+            {playOpen && (
+              <div className="mt-3 space-y-3">
+                <Choice
+                  label="Jogar contra"
+                  value={trainBot}
+                  onChange={setTrainBot}
+                  options={[
+                    { value: "local", label: "Outra pessoa, neste ecrã" },
+                    ...BOTS.map((b) => ({ value: b.id, label: b.elo ? `${b.name} (${b.elo})` : "Stockfish (3600)" })),
+                  ]}
+                />
+                <Choice
+                  label="A sua cor"
+                  value={trainColor}
+                  onChange={setTrainColor}
+                  options={[
+                    { value: "white", label: "Brancas" },
+                    { value: "black", label: "Pretas" },
+                  ]}
+                />
+                <button type="button" className="btn btn-primary" onClick={() => setTrain(true)}>
+                  Treinar desta posição
+                </button>
+              </div>
+            )}
             <textarea
               className="field mt-3 min-h-28"
               placeholder="Cole um PGN ou um FEN"

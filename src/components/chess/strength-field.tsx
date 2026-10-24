@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { clampElo, STRENGTHS } from "@/lib/chess/strength";
+import { clampElo, strengthName, STRENGTHS } from "@/lib/chess/strength";
 
 export function StrengthField({
   elo,
@@ -16,7 +16,7 @@ export function StrengthField({
     <div>
       <p className="mb-1.5 text-sm text-muted">{label}</p>
       <button type="button" className="btn w-full justify-between" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <span>{named ? named.label : `${elo}`}</span>
+        <span>{named ? named.label : strengthName(elo)}</span>
         <span className="text-muted">{open ? "Fechar" : "Escolher"}</span>
       </button>
       {open && (

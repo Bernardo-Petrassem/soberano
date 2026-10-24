@@ -9,13 +9,14 @@ import {
   checkedKing,
   destsOf,
   fenOf,
+  isCapture,
   lastSquares,
   legalMove,
   needsPromotion,
   positionAt,
   sanAndUci,
 } from "@/lib/chess/logic";
-import { knock } from "@/lib/chess/sound";
+import { capture, knock } from "@/lib/chess/sound";
 import { useVault, type PuzzleAttempt } from "@/lib/chess/store";
 
 const THEME_PT: Record<string, string> = {
@@ -248,7 +249,8 @@ export function PuzzleRun({
     const { uci } = sanAndUci(shown, move);
     const expected = puzzle.line[step];
     if (uci !== expected) {
-      knock(sound);
+      if (isCapture(shown, from, to)) capture(sound);
+      else knock(sound);
       if (!infinite) {
         setHint("Não era esse. O desafio fica por aqui.");
         if (!penalized.current) {
@@ -279,7 +281,8 @@ export function PuzzleRun({
       }
       return;
     }
-    knock(sound);
+    if (isCapture(shown, from, to)) capture(sound);
+    else knock(sound);
     setHint("");
     const after = step + 1;
     playedRef.current = puzzle.line.slice(0, after);
@@ -294,6 +297,10 @@ export function PuzzleRun({
     setWait(true);
     window.clearTimeout(waitId.current);
     waitId.current = window.setTimeout(() => {
+      const reply = puzzle.line[after];
+      const before = positionAt(puzzle.fen, puzzle.line, after);
+      if (before && reply && isCapture(before, reply.slice(0, 2), reply.slice(2, 4))) capture(sound);
+      else knock(sound);
       const landed = after + 1;
       setWait(false);
       setLive(landed);

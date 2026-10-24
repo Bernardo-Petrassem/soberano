@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { Crown } from "lucide-react";
+import { displayName, useHydrated, useVault } from "@/lib/chess/store";
 
 const LINKS = [
   { to: "/", label: "Início" },
@@ -13,6 +15,14 @@ const LINKS = [
 ] as const;
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  const hydrated = useHydrated();
+  const name = useVault((s) => s.name);
+  const setName = useVault((s) => s.setName);
+  useEffect(() => {
+    if (!hydrated) return;
+    const clean = displayName(name);
+    if (clean !== name) setName(clean);
+  }, [hydrated, name, setName]);
   return (
     <div className="min-h-screen bg-ink text-cream">
       <header className="sticky top-0 z-30 border-b border-line bg-ink/95 backdrop-blur">

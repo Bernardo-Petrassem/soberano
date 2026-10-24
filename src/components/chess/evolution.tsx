@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { LineChart as LineChartType } from "recharts";
 import { Panel } from "@/components/chess/shell";
 import { TIME_CONTROLS } from "@/lib/chess/logic";
-import { useVault, type ArchivedGame } from "@/lib/chess/store";
+import { displayName, formatWhen, useVault, type ArchivedGame } from "@/lib/chess/store";
 
 type Scale = "hours" | "days" | "months" | "years";
 type ChartModule = {
@@ -175,7 +175,7 @@ export function Evolution({ onOpen }: { onOpen: (id: string) => void }) {
               <span>{label}</span>
               {game ? (
                 <button type="button" className="text-brass" onClick={() => onOpen(game.id)}>
-                  {game.result} · {game.white}–{game.black}
+                  {game.result} · {displayName(game.white, "Brancas")}–{displayName(game.black, "Pretas")} · {formatWhen(game.date)}
                 </button>
               ) : (
                 <span className="text-muted">Sem informação</span>

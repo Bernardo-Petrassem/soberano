@@ -76,7 +76,7 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
     };
   }, [items, rating, armed]);
 
-  if (!items.length) return <p className="text-sm text-muted">Sem informação</p>;
+  if (!items.length) return <p className="text-sm text-muted">Ainda não há problemas revistos.</p>;
   const item = items[index] ?? items[0]!;
   const report = reports[index];
   const pos = positionAt(item.fen, item.played, step);
@@ -91,15 +91,15 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
       <div className="grid gap-3 sm:grid-cols-3">
         <Panel>
           <p className="text-sm text-muted">Precisão</p>
-          <p className="font-display text-3xl">{avg == null ? "Sem informação" : `${avg}%`}</p>
+          <p className="font-display text-3xl">{avg == null ? "—" : `${avg}%`}</p>
         </Panel>
         <Panel>
           <p className="text-sm text-muted">Chances perdidas</p>
-          <p className="font-display text-3xl">{reports.length ? missed : "Sem informação"}</p>
+          <p className="font-display text-3xl">{reports.length ? missed : "—"}</p>
         </Panel>
         <Panel>
           <p className="text-sm text-muted">Peças penduradas</p>
-          <p className="font-display text-3xl">{reports.length ? hanging : "Sem informação"}</p>
+          <p className="font-display text-3xl">{reports.length ? hanging : "—"}</p>
         </Panel>
       </div>
       {busy && <p className="text-sm text-muted">{busy}</p>}
@@ -150,7 +150,7 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
               {report ? ` · precisão ${report.precision}% · ${report.missed} chances perdidas · ${report.hanging} peças penduradas` : ""}
             </p>
             <p className="mt-2 text-sm text-muted">Melhores lances do motor</p>
-            <p className="mt-1 text-sm">{bestUser.length ? bestUser.join(" ") : busy ? "…" : "Sem informação"}</p>
+            <p className="mt-1 text-sm">{bestUser.length ? bestUser.join(" ") : busy ? "…" : "—"}</p>
             {report && step > 0 && report.marks[step - 1] && (
               <p className="mt-2 text-sm">
                 Lance {step}: <span className={MARK_CLASS[report.marks[step - 1]!]}>{report.marks[step - 1]}</span>
