@@ -13,7 +13,9 @@ import {
   lastSquares,
   legalMove,
   needsPromotion,
+  playUciOn,
   positionAt,
+  sameMove,
   sanAndUci,
 } from "@/lib/chess/logic";
 import { capture, knock } from "@/lib/chess/sound";
@@ -247,8 +249,12 @@ export function PuzzleRun({
     const move = legalMove(shown, from, to, promotion);
     if (!move) return;
     const { uci } = sanAndUci(shown, move);
-    const expected = puzzle.line[step];
-    if (uci !== expected) {
+    const expected = puzzle.line[step] ?? "";
+    const solution = positionAt(puzzle.fen, puzzle.line, puzzle.line.length);
+    const trial = shown.clone();
+    const playedOk = playUciOn(trial, uci);
+    const mates = Boolean(playedOk && trial.isCheckmate() && solution?.isCheckmate());
+    if (!sameMove(shown, uci, expected) && !mates) {
       if (isCapture(shown, from, to)) capture(sound);
       else knock(sound);
       if (!infinite) {

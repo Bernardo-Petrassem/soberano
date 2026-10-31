@@ -108,6 +108,177 @@ export function fenKey(fen: string): string {
   return fen.split(" ").slice(0, 4).join(" ");
 }
 
+/**
+ * Chave de repetição segundo a FIDE: peças, vez, roques e en passant
+ * só quando um peão pode realmente capturar.
+ * Meio-lances e número do lance não entram.
+ */
+export function repetitionKey(pos: Chess): string {
+  const parts = fenOf(pos).split(" ");
+  const ep = parts[3];
+  if (ep && ep !== "-") {
+    const sq = parseSquare(ep);
+    let legalEp = false;
+    if (sq != null) {
+      for (const [from, piece] of pos.board) {
+        if (piece.color !== pos.turn || piece.role !== "pawn") continue;
+        if (attacks(piece, from, pos.board.occupied).has(sq)) {
+          legalEp = true;
+          break;
+        }
+      }
+    }
+    if (!legalEp) parts[3] = "-";
+  }
+  return parts.slice(0, 4).join(" ");
+}
+
+export function replayKeys(startFen: string, ucis: string[]): string[] {
+  const pos = loadFen(startFen);
+  if (!pos) return [];
+  const keys = [repetitionKey(pos)];
+  for (const uci of ucis) {
+    if (!playUciOn(pos, uci)) break;
+    keys.push(repetitionKey(pos));
+  }
+  return keys;
+}
+
+export function repeatCount(keys: string[], key = keys.at(-1) ?? ""): number {
+  let count = 0;
+  for (const item of keys) if (item === key) count += 1;
+  return count;
+}
+
+export type Claim = "repetition" | "fifty";
+
+/** Tripla repetição e regra dos 50 lances são reivindicação, não empate automático. */
+export function claimOf(pos: Chess, keys: string[]): Claim | null {
+  if (repeatCount(keys, repetitionKey(pos)) >= 3) return "repetition";
+  if (pos.halfmoves >= 100) return "fifty";
+  return null;
+}
+
+const KNIGHT_JUMPS: [number, number][] = [
+  [1, 2],
+  [2, 1],
+  [-1, 2],
+  [-2, 1],
+  [1, -2],
+  [2, -1],
+  [-1, -2],
+  [-2, -1],
+];
+
+const SLIDE: Record<"bishop" | "rook" | "queen", [number, number][]> = {
+  bishop: [
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ],
+  rook: [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ],
+  queen: [
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ],
+};
+
+/** Casas em que a peça pode geometricamente estar. Ignora xeque, mas não casas impossíveis. */
+export function premoveDests(pos: Chess, color: Color): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  const files = "abcdefgh";
+  for (const [sq, piece] of pos.board) {
+    if (piece.color !== color) continue;
+    const dests = new Set<string>();
+    const file = squareFile(sq);
+    const rank = squareRank(sq);
+    const land = (f: number, r: number) => {
+      if (f < 0 || f > 7 || r < 0 || r > 7) return;
+      const name = `${files[f]}${r + 1}`;
+      const to = parseSquare(name);
+      if (to == null) return;
+      if (pos.board.get(to)?.color === color) return;
+      dests.add(name);
+    };
+    if (piece.role === "knight") {
+      for (const [df, dr] of KNIGHT_JUMPS) land(file + df, rank + dr);
+    } else if (piece.role === "king") {
+      for (let df = -1; df <= 1; df++) {
+        for (let dr = -1; dr <= 1; dr++) {
+          if (!df && !dr) continue;
+          land(file + df, rank + dr);
+        }
+      }
+      for (const rookSq of pos.castles.castlingRights) {
+        const rook = pos.board.get(rookSq);
+        if (!rook || rook.color !== color || rook.role !== "rook") continue;
+        const side = squareFile(rookSq) > file ? "h" : "a";
+        const castleTo = makeSquare(kingCastlesTo(color, side));
+        const castleSq = parseSquare(castleTo);
+        if (castleSq != null && pos.board.get(castleSq)?.color === color) continue;
+        dests.add(castleTo);
+      }
+    } else if (piece.role === "pawn") {
+      const dir = color === "white" ? 1 : -1;
+      const one = rank + dir;
+      if (one >= 0 && one <= 7) {
+        land(file, one);
+        if (file > 0) land(file - 1, one);
+        if (file < 7) land(file + 1, one);
+      }
+      if (rank === (color === "white" ? 1 : 6) && one >= 0 && one <= 7) {
+        const mid = parseSquare(`${files[file]}${one + 1}`);
+        if (mid == null || pos.board.get(mid)?.color !== color) land(file, rank + dir * 2);
+      }
+    } else {
+      for (const [df, dr] of SLIDE[piece.role]) {
+        let f = file + df;
+        let r = rank + dr;
+        while (f >= 0 && f <= 7 && r >= 0 && r <= 7) {
+          const name = `${files[f]}${r + 1}`;
+          const to = parseSquare(name);
+          if (to == null) break;
+          if (pos.board.get(to)?.color === color) break;
+          dests.add(name);
+          f += df;
+          r += dr;
+        }
+      }
+    }
+    if (dests.size) map[makeSquare(sq)] = [...dests];
+  }
+  return map;
+}
+
+/** Mesmo lance, ou a mesma posição resultante (promoção inclusa). */
+export function sameMove(pos: Chess, played: string, expected: string): boolean {
+  if (!played || !expected) return false;
+  if (played === expected) return true;
+  if (played.slice(0, 4) === expected.slice(0, 4)) {
+    const a = played[4];
+    const b = expected[4];
+    if (!a || !b || a === b) return true;
+  }
+  const left = pos.clone();
+  const right = pos.clone();
+  const fill = (uci: string) =>
+    uci.length === 4 && needsPromotion(pos, uci.slice(0, 2), uci.slice(2, 4)) ? `${uci}q` : uci;
+  if (!playUciOn(left, fill(played)) || !playUciOn(right, fill(expected))) return false;
+  return repetitionKey(left) === repetitionKey(right);
+}
+
 export function squareName(square: Square): string {
   return makeSquare(square);
 }
@@ -197,10 +368,11 @@ export function endingOf(pos: Chess, keys: string[]): Ending | null {
   }
   if (pos.isStalemate()) return { reason: "Afogamento", result: "1/2-1/2" };
   if (pos.isInsufficientMaterial()) return { reason: "Material insuficiente", result: "1/2-1/2" };
-  if (pos.halfmoves >= 100) return { reason: "Regra dos 50 lances", result: "1/2-1/2" };
-  const key = fenKey(fenOf(pos));
-  if (keys.filter((k) => k === key).length >= 3) {
-    return { reason: "Tripla repetição", result: "1/2-1/2" };
+  // FIDE 9.6.2 — 75 lances sem captura nem peão é empate automático.
+  if (pos.halfmoves >= 150) return { reason: "Regra dos 75 lances", result: "1/2-1/2" };
+  // FIDE 9.6.1 — a quinta ocorrência da mesma posição encerra sozinha.
+  if (repeatCount(keys, repetitionKey(pos)) >= 5) {
+    return { reason: "Repetição quíntupla", result: "1/2-1/2" };
   }
   return null;
 }

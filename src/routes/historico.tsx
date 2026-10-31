@@ -1,11 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Shell, Panel } from "@/components/chess/shell";
 import { Board } from "@/components/chess/board";
 import { Evolution } from "@/components/chess/evolution";
+import { useLab } from "@/lib/chess/lab";
 import { checkedKing, fenOf, lastSquares, MARK_CLASS, pairedSans, positionAt } from "@/lib/chess/logic";
 import { reviewLine } from "@/lib/chess/review";
-import { displayName, formatWhen, useHydrated, useVault } from "@/lib/chess/store";
+import { displayName, formatWhen, useHydrated, useVault, type ArchivedGame } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/historico")({ component: Historico });
 
@@ -15,12 +16,18 @@ function Historico() {
   const rating = useVault((s) => s.rating);
   const setMarks = useVault((s) => s.setMarks);
   const removeGame = useVault((s) => s.removeGame);
+  const navigate = useNavigate();
   const [tab, setTab] = useState<"partidas" | "evolucao">("partidas");
   const [id, setId] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
   const [busy, setBusy] = useState("");
   const game = games.find((g) => g.id === id) ?? null;
   const pos = game ? positionAt(game.startFen, game.ucis, cursor) : null;
+
+  function study(item: ArchivedGame) {
+    useLab.getState().openGame(item);
+    void navigate({ to: "/analise" });
+  }
 
   return (
     <Shell>
@@ -39,10 +46,8 @@ function Historico() {
         <div className="mt-4">
           <Evolution
             onOpen={(gameId) => {
-              setId(gameId);
               const found = games.find((g) => g.id === gameId);
-              setCursor(found?.ucis.length ?? 0);
-              setTab("partidas");
+              if (found) study(found);
             }}
           />
         </div>
@@ -58,10 +63,7 @@ function Historico() {
                 <button
                   type="button"
                   className="w-full rounded-xl border border-line bg-panel px-3 py-3 text-left"
-                  onClick={() => {
-                    setId(g.id);
-                    setCursor(g.ucis.length);
-                  }}
+                  onClick={() => study(g)}
                 >
                   <span className="block text-sm">
                     {displayName(g.white, "Brancas")} — {displayName(g.black, "Pretas")}

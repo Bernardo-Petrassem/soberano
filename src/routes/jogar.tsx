@@ -89,6 +89,8 @@ function Jogar() {
       blackName,
       rated: Boolean(bot) && rated,
       pace,
+      kind: "play",
+      onPlayAgain: () => setNonce((n) => n + 1),
     });
     setNonce((n) => n + 1);
   }

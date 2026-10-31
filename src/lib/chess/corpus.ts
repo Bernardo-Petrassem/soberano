@@ -3,6 +3,13 @@ import { parseSan } from "chessops/san";
 import { fenKey, fenOf, loadFen, parseMainline, START_FEN, uciOf, ucisFromSans } from "@/lib/chess/logic";
 import { publicUrl } from "@/lib/chess/public-url";
 
+export function matchOpening(opening: Opening, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const eco = opening.eco.toLowerCase();
+  if (/^[a-e]\d{0,2}$/.test(q)) return eco.startsWith(q);
+  return `${eco} ${opening.name} ${opening.family} ${opening.moves}`.toLowerCase().includes(q);
+}
 export type Opening = { eco: string; family: string; name: string; moves: string };
 export type Puzzle = { id: string; fen: string; rating: number; themes: string[]; line: string[] };
 

@@ -10,8 +10,8 @@ import { LiveGame } from "@/components/chess/live-game";
 import { PuzzleRun } from "@/components/chess/puzzle-run";
 import { StrengthField } from "@/components/chess/strength-field";
 import { formatWatch, useStopwatch } from "@/components/chess/stopwatch";
-import { corpus, type Opening, type Puzzle } from "@/lib/chess/corpus";
-import { generateEndgame, type EndgameId } from "@/lib/chess/endgames";
+import { corpus, matchOpening, type Opening, type Puzzle } from "@/lib/chess/corpus";
+import { generateEndgame, generateRandomEndgame, type EndgameId } from "@/lib/chess/endgames";
 import { Engine } from "@/lib/chess/engine";
 import {
   ENDGAMES,
@@ -38,6 +38,7 @@ import { useVault } from "@/lib/chess/store";
 export const Route = createFileRoute("/treino")({ component: Treino });
 
 type Tab = "aberturas" | "finais" | "meio";
+type DrillId = EndgameId | "random";
 const FAMILIES = ["Flanco", "Semiabertas", "Abertas", "Fechadas", "Indianas"];
 
 function lineFen(moves: string) {
@@ -67,7 +68,9 @@ function Treino() {
   const [page, setPage] = useState(0);
   const [openRoot, setOpenRoot] = useState("");
   const [preview, setPreview] = useState<Opening | null>(null);
-  const [endQueue, setEndQueue] = useState<string[]>(saved?.endgames ?? []);
+  const [endQueue, setEndQueue] = useState<DrillId[]>((saved?.endgames ?? []) as DrillId[]);
+  const [focus, setFocus] = useState<DrillId | "">((saved?.endgames?.[0] as DrillId | undefined) ?? "");
+  const [pieces, setPieces] = useState("6");
   const [side, setSide] = useState<Color>(saved?.color ?? "white");
   const [elo, setElo] = useState(saved?.elo ?? 1200);
   const [solo, setSolo] = useState(false);
@@ -85,11 +88,10 @@ function Treino() {
   }, []);
 
   const pool = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     return openings.filter((o) => {
       if (family && o.family !== family) return false;
-      if (q.length >= 2 && !`${o.eco} ${o.name} ${o.family}`.toLowerCase().includes(q)) return false;
-      return true;
+      return matchOpening(o, q);
     });
   }, [openings, query, family]);
 
@@ -170,7 +172,15 @@ function Treino() {
               ))}
             </div>
             <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm">
-              {windowed.map(([root, list]) => (
+              {query.trim()
+                ? pool.slice(0, 40).map((o) => (
+                    <li key={`${o.eco}-${o.name}-${o.moves}`}>
+                      <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2" onClick={() => setPreview(o)}>
+                        <span className="text-brass">{o.eco}</span> {o.name}
+                      </button>
+                    </li>
+                  ))
+                : windowed.map(([root, list]) => (
                 <li key={root}>
                   <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2" onClick={() => setOpenRoot((v) => (v === root ? "" : root))}>
                     <span className="text-brass">{list[0]?.eco}</span> {root}
@@ -248,7 +258,7 @@ function Treino() {
 
       {tab === "finais" && endOn && fen && (
         <EndgamePlay
-          id={(endQueue[endAt] || ENDGAMES[0]!.id) as EndgameId}
+          id={(endQueue[endAt] || ENDGAMES[0]!.id) as DrillId}
           fen={fen}
           elo={elo}
           side={side}
@@ -258,13 +268,14 @@ function Treino() {
           onStop={() => setEndOn(false)}
           onAgain={() => setSpin((n) => n + 1)}
           onFresh={() => {
-            setFen(generateEndgame((endQueue[endAt] || "pp") as EndgameId));
+            const current = (endQueue[endAt] || "pp") as DrillId;
+            setFen(current === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(current));
             setSpin((n) => n + 1);
           }}
           onNext={() => {
             const next = endAt + 1;
             setEndAt(next);
-            setFen(generateEndgame(endQueue[next] as EndgameId));
+            setFen(endQueue[next] === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(endQueue[next] as EndgameId));
             setSpin((n) => n + 1);
           }}
         />
@@ -278,10 +289,12 @@ function Treino() {
                 <li key={e.id}>
                   <button
                     type="button"
-                    className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2"
+                    className={`w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2 ${focus === e.id ? "bg-panel-2 text-brass" : ""}`}
                     onClick={() => {
-                      setFen(generateEndgame(e.id as EndgameId));
-                      setEndQueue((q) => (q.includes(e.id) ? q : [...q, e.id]));
+                      const id = e.id as EndgameId;
+                      setFocus(id);
+                      setFen(generateEndgame(id));
+                      setEndQueue((q) => (q.includes(id) ? q : [...q, id]));
                     }}
                   >
                     {e.name}
@@ -311,6 +324,29 @@ function Treino() {
               </ul>
             )}
             <p className="mt-3 text-sm text-muted">{ENDGAMES.find((e) => e.id === endQueue.at(-1))?.goal}</p>
+            <label className="mt-3 block text-sm text-muted">
+              Peças no final aleatório
+              <input
+                className="field no-spin mt-1 max-w-28"
+                inputMode="numeric"
+                value={pieces}
+                onChange={(e) => setPieces(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
+                onBlur={() => setPieces(String(Math.max(3, Math.min(12, Number(pieces) || 6))))}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn mt-2"
+              onClick={() => {
+                const n = Math.max(3, Math.min(12, Number(pieces) || 6));
+                setPieces(String(n));
+                setFocus("random");
+                setFen(generateRandomEndgame(n));
+                setEndQueue((q) => (q.includes("random") ? q : [...q, "random"]));
+              }}
+            >
+              Gerar final aleatório
+            </button>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button type="button" className={side === "white" ? "btn btn-primary" : "btn"} onClick={() => setSide("white")}>
                 Brancas
@@ -336,8 +372,12 @@ function Treino() {
                 className="btn btn-primary"
                 disabled={!endQueue.length}
                 onClick={() => {
-                  setEndAt(0);
-                  setFen(generateEndgame(endQueue[0] as EndgameId));
+                  const chosen = (focus || endQueue[0]) as DrillId;
+                  const queue = endQueue.includes(chosen) ? endQueue : [chosen, ...endQueue];
+                  const at = Math.max(0, queue.indexOf(chosen));
+                  setEndQueue(queue);
+                  setEndAt(at);
+                  setFen(chosen === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(chosen));
                   setEndOn(true);
                   setSpin(0);
                 }}
@@ -373,7 +413,7 @@ function EndgamePlay({
   onFresh,
   onNext,
 }: {
-  id: EndgameId;
+  id: DrillId;
   fen: string;
   elo: number;
   side: Color;
@@ -385,7 +425,10 @@ function EndgamePlay({
   onFresh: () => void;
   onNext: () => void;
 }) {
-  const drill = ENDGAMES.find((e) => e.id === id) ?? ENDGAMES[0]!;
+  const drill =
+    id === "random"
+      ? { name: "Final aleatório", goal: "Uma posição nova. O objetivo é calcular, não decorar." }
+      : (ENDGAMES.find((e) => e.id === id) ?? ENDGAMES[0]!);
   const engine = eloToEngine(elo);
   const human = solo ? "both" : side;
   return (
@@ -416,6 +459,8 @@ function EndgamePlay({
           bot: solo ? null : { name: strengthName(engine.nominal), skill: engine.skill, elo: engine.elo, nominal: engine.nominal },
           clock: null,
           tcLabel: drill.name,
+          kind: "endgame",
+          onPlayAgain: onAgain,
           slipElo: !solo && human === "black" ? engine.nominal : null,
           whiteName: human === "both" ? "Brancas" : human === "white" ? "Você" : strengthName(engine.nominal),
           blackName: human === "both" ? "Pretas" : human === "black" ? "Você" : strengthName(engine.nominal),
@@ -545,19 +590,19 @@ function Trainer({ opening }: { opening: Opening }) {
       <Panel>
         <div className="flex items-start justify-between gap-2">
           <p className="font-display text-3xl tabular-nums text-brass">{clockLabel}</p>
-          <div className="relative">
-            <button type="button" className={gear ? "btn btn-primary" : "btn"} aria-label="Configurações" onClick={() => setGear((v) => !v)}>
-              <Settings className="size-4" />
-            </button>
+          <button type="button" className={gear ? "btn btn-primary" : "btn"} aria-label="Configurações" aria-expanded={gear} onClick={() => setGear((v) => !v)}>
+            <Settings className="size-4" />
+          </button>
+        </div>
             {gear && (
-              <div className="absolute right-0 z-20 mt-2 w-64 space-y-2 rounded-xl border border-line bg-panel p-3 text-sm">
+              <div className="mt-3 space-y-2 rounded-xl border border-line bg-panel-2 p-3 text-sm">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={timed} onChange={(e) => setTimed(e.target.checked)} />
                   Com tempo
                 </label>
                 <label className="block text-muted">
                   Segundos para a linha
-                  <input className="field mt-1" type="number" min={5} max={900} value={seconds} onChange={(e) => setSeconds(Math.max(5, Number(e.target.value) || 5))} />
+                  <input className="field no-spin mt-1" inputMode="numeric" value={seconds} onChange={(e) => setSeconds(Number(e.target.value.replace(/[^\d]/g, "")) || 0)} onBlur={() => setSeconds((n) => Math.max(5, Math.min(900, n || 60)))} />
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={restartOnMiss} onChange={(e) => setRestartOnMiss(e.target.checked)} />
@@ -573,8 +618,6 @@ function Trainer({ opening }: { opening: Opening }) {
                 </label>
               </div>
             )}
-          </div>
-        </div>
         <p className="mt-1 text-sm text-muted">
           {opening.family} · só com as {side === "white" ? "brancas" : "pretas"}
         </p>
@@ -643,59 +686,59 @@ function PracticeOpening({ opening, elo, onElo, onBack }: { opening: Opening; el
         <button type="button" className={over ? "btn btn-primary" : "btn"} onClick={onBack}>
           {over ? "Voltar" : "Parar"}
         </button>
-        <div className="relative">
-          <button type="button" className={gear ? "btn btn-primary" : "btn"} aria-label="Configurações" onClick={() => setGear((v) => !v)}>
-            <Settings className="size-4" />
-          </button>
-          {gear && (
-            <div className="absolute left-0 z-20 mt-2 w-72 space-y-2 rounded-xl border border-line bg-panel p-3 text-sm">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={useClock} onChange={(e) => setUseClock(e.target.checked)} />
-                Com tempo
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-muted">
-                  Minutos
-                  <input className="field mt-1" type="number" min={0} max={180} value={minutes} onChange={(e) => setMinutes(Math.max(0, Number(e.target.value) || 0))} />
-                </label>
-                <label className="text-muted">
-                  Acréscimo
-                  <input className="field mt-1" type="number" min={0} max={60} value={inc} onChange={(e) => setInc(Math.max(0, Number(e.target.value) || 0))} />
-                </label>
-              </div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={ready}
-                  onChange={(e) => {
-                    setReady(e.target.checked);
-                    setSpin((n) => n + 1);
-                    setOver(false);
-                  }}
-                />
-                Começar com a posição já feita
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={hintOn} onChange={(e) => setHintOn(e.target.checked)} />
-                Sugestão do Stockfish
-              </label>
-              <StrengthField elo={elo} onChange={onElo} />
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setSpin((n) => n + 1);
-                  setOver(false);
-                  setGear(false);
-                }}
-              >
-                Aplicar
-              </button>
-            </div>
-          )}
-        </div>
+        <button type="button" className={gear ? "btn btn-primary" : "btn"} aria-expanded={gear} onClick={() => setGear((v) => !v)}>
+          <Settings className="size-4" />
+          Ajustes
+        </button>
         <p className="text-sm text-muted">A jogar com as {side === "white" ? "brancas" : "pretas"}.</p>
       </div>
+      {gear && (
+        <Panel className="mb-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={useClock} onChange={(e) => setUseClock(e.target.checked)} />
+              Com tempo
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={hintOn} onChange={(e) => setHintOn(e.target.checked)} />
+              Sugestão do Stockfish
+            </label>
+            <label className="text-sm text-muted">
+              Minutos
+              <input className="field no-spin mt-1" inputMode="numeric" value={minutes} onChange={(e) => setMinutes(Number(e.target.value.replace(/[^\d]/g, "")) || 0)} onBlur={() => setMinutes((n) => Math.max(0, Math.min(180, n)))} />
+            </label>
+            <label className="text-sm text-muted">
+              Acréscimo
+              <input className="field no-spin mt-1" inputMode="numeric" value={inc} onChange={(e) => setInc(Number(e.target.value.replace(/[^\d]/g, "")) || 0)} onBlur={() => setInc((n) => Math.max(0, Math.min(60, n)))} />
+            </label>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={ready}
+                onChange={(e) => {
+                  setReady(e.target.checked);
+                  setSpin((n) => n + 1);
+                  setOver(false);
+                }}
+              />
+              Começar com a posição já feita
+            </label>
+          </div>
+          <div className="mt-3">
+            <StrengthField elo={elo} onChange={onElo} />
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary mt-3"
+            onClick={() => {
+              setSpin((n) => n + 1);
+              setOver(false);
+            }}
+          >
+            Aplicar
+          </button>
+        </Panel>
+      )}
       <LiveGame
           key={`${spin}-${ready}-${useClock}-${minutes}-${inc}-${elo}`}
           config={{
@@ -706,8 +749,13 @@ function PracticeOpening({ opening, elo, onElo, onBack }: { opening: Opening; el
             prelude,
             clock: initial ? { initial, inc: inc * 1000 } : null,
             tcLabel: opening.name,
+            kind: "opening",
             pace: "human",
             showHint: hintOn,
+            onPlayAgain: () => {
+              setSpin((n) => n + 1);
+              setOver(false);
+            },
             whiteName: side === "white" ? "Você" : name,
             blackName: side === "black" ? "Você" : name,
             onEnd: (ending) => {
@@ -842,7 +890,12 @@ function FromLine({ opening, onBack }: { opening: Opening; onBack: () => void })
             prelude: { sans, ucis: ucisFromSans(START_FEN, sans) },
             clock: initial ? { initial, inc: inc * 1000 } : null,
             tcLabel: label,
+            kind: "opening",
             pace: "human",
+            onPlayAgain: () => {
+              setGoing(false);
+              setOver(false);
+            },
             whiteName: local ? "Brancas" : side === "white" ? "Você" : name,
             blackName: local ? "Pretas" : side === "black" ? "Você" : name,
             onEnd: (ending) => {

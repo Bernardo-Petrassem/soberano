@@ -18,6 +18,7 @@ export type ArchivedGame = {
   ucis: string[];
   variant960: boolean;
   tc: string;
+  kind?: "play" | "opening" | "endgame" | "analysis";
   marks?: Mark[];
   /** 2 = estrela para o melhor lance e !!! só para sacrifício que vira a partida. */
   markVersion?: number;
@@ -42,6 +43,17 @@ export type PuzzleAttempt = {
   wrong?: string;
 };
 
+export type RepCard = {
+  id: string;
+  eco: string;
+  name: string;
+  moves: string;
+  due: number;
+  interval: number;
+  ease: number;
+  reps: number;
+};
+
 export type DrillSave = {
   openings: { eco: string; family: string; name: string; moves: string }[];
   endgames: string[];
@@ -60,6 +72,8 @@ type Vault = {
   ratingLog: RatingPoint[];
   attempts: PuzzleAttempt[];
   drill: DrillSave | null;
+  repertoire: RepCard[];
+  endgameBest: Record<string, number>;
   setName: (name: string) => void;
   ensureId: () => string;
   setRating: (rating: number) => void;
@@ -73,6 +87,10 @@ type Vault = {
   removeGame: (id: string) => void;
   logAttempt: (attempt: PuzzleAttempt) => void;
   saveDrill: (drill: DrillSave) => void;
+  upsertCard: (card: Omit<RepCard, "due" | "interval" | "ease" | "reps" | "id"> & { id?: string }) => void;
+  gradeCard: (id: string, ok: boolean) => void;
+  removeCard: (id: string) => void;
+  setEndgameBest: (id: string, pct: number) => void;
 };
 
 export function displayName(raw: string | undefined, fallback = "Jogador"): string {
@@ -117,6 +135,8 @@ export const useVault = create<Vault>()(
       ratingLog: [],
       attempts: [],
       drill: null,
+      repertoire: [],
+      endgameBest: {},
       setName: (name) => set({ name: displayName(name) }),
       ensureId: () => {
         const id = get().peerId || makeId();
@@ -152,6 +172,38 @@ export const useVault = create<Vault>()(
       removeGame: (id) => set((s) => ({ games: s.games.filter((g) => g.id !== id) })),
       logAttempt: (attempt) => set((s) => ({ attempts: [attempt, ...s.attempts].slice(0, 80) })),
       saveDrill: (drill) => set({ drill }),
+      upsertCard: (card) =>
+        set((s) => {
+          const id = card.id ?? `${card.eco}:${card.name}`;
+          const prev = s.repertoire.find((c) => c.id === id);
+          const next: RepCard = prev ?? {
+            id,
+            eco: card.eco,
+            name: card.name,
+            moves: card.moves,
+            due: Date.now(),
+            interval: 0,
+            ease: 2.5,
+            reps: 0,
+          };
+          const saved = { ...next, eco: card.eco, name: card.name, moves: card.moves };
+          return { repertoire: [saved, ...s.repertoire.filter((c) => c.id !== id)].slice(0, 200) };
+        }),
+      gradeCard: (id, ok) =>
+        set((s) => ({
+          repertoire: s.repertoire.map((card) => {
+            if (card.id !== id) return card;
+            if (!ok) {
+              return { ...card, reps: 0, interval: 0, ease: Math.max(1.3, card.ease - 0.2), due: Date.now() + 10 * 60_000 };
+            }
+            const reps = card.reps + 1;
+            const interval = reps === 1 ? 1 : reps === 2 ? 3 : Math.max(1, Math.round(card.interval * card.ease));
+            return { ...card, reps, interval, ease: Math.min(3, card.ease + 0.08), due: Date.now() + interval * 86_400_000 };
+          }),
+        })),
+      removeCard: (id) => set((s) => ({ repertoire: s.repertoire.filter((c) => c.id !== id) })),
+      setEndgameBest: (id, pct) =>
+        set((s) => ({ endgameBest: { ...s.endgameBest, [id]: Math.max(s.endgameBest[id] ?? 0, Math.round(pct)) } })),
     }),
     {
       name: "soberano-vault",
@@ -167,6 +219,8 @@ export const useVault = create<Vault>()(
         ratingLog: s.ratingLog,
         attempts: s.attempts,
         drill: s.drill,
+        repertoire: s.repertoire,
+        endgameBest: s.endgameBest,
       }),
     },
   ),

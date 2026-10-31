@@ -283,3 +283,23 @@ export function generateEndgame(id: EndgameId): string {
   }
   return fen ?? FALLBACK[id];
 }
+
+const MIX: Role[] = ["queen", "rook", "bishop", "knight", "pawn", "pawn", "pawn"];
+
+/** Posição legal com no máximo `maxPieces` peças, reis incluídos. */
+export function generateRandomEndgame(maxPieces: number): string {
+  const cap = Math.max(3, Math.min(12, Math.round(maxPieces) || 6));
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const extras = 1 + rnd(cap - 2);
+    const specs: Spec[] = [
+      { role: "king", color: "white" },
+      { role: "king", color: "black" },
+    ];
+    for (let i = 0; i < extras; i++) {
+      specs.push({ role: MIX[rnd(MIX.length)]!, color: rnd(2) ? "white" : "black" });
+    }
+    const fen = scatter(specs, rnd(2) ? "white" : "black", () => true);
+    if (fen) return fen;
+  }
+  return FALLBACK.pp;
+}

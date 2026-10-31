@@ -9,10 +9,10 @@ import { corpus } from "@/lib/chess/corpus";
 import { slipUci, weakenUci } from "@/lib/chess/strength";
 import {
   checkedKing,
+  claimOf,
   destsOf,
   endingOf,
   eloDelta,
-  fenKey,
   fenOf,
   flagEnding,
   formatClock,
@@ -25,9 +25,12 @@ import {
   pairedSans,
   playUciOn,
   positionAt,
+  premoveDests,
+  replayKeys,
   sanAndUci,
   START_FEN,
   toPgn,
+  type Claim,
   type Ending,
 } from "@/lib/chess/logic";
 import { capture, knock } from "@/lib/chess/sound";
@@ -64,23 +67,19 @@ export type LiveConfig = {
   externalEnd?: { nonce: number; ending: Ending } | null;
   onResignRemote?: () => void;
   onDrawOffer?: () => void;
-  onEnd?: (ending: Ending) => void;
+  onEnd?: (ending: Ending, played: { startFen: string; ucis: string[] }) => void;
+  onPlayAgain?: () => void;
   showHint?: boolean;
+  kind?: "play" | "opening" | "endgame" | "analysis";
 };
 
 function fresh(config: LiveConfig) {
   const startFen = config.startFen || START_FEN;
   const ucis = [...(config.prelude?.ucis ?? [])];
   const sans = [...(config.prelude?.sans ?? [])].slice(0, ucis.length);
-  const keys = [fenKey(startFen)];
-  const cursorPos = loadFen(startFen);
-  if (cursorPos) {
-    for (const uci of ucis) {
-      playUciOn(cursorPos, uci);
-      keys.push(fenKey(fenOf(cursorPos)));
-    }
-  }
-  const turn = cursorPos?.turn ?? loadFen(startFen)?.turn ?? "white";
+  const keys = replayKeys(startFen, ucis);
+  const cursorPos = positionAt(startFen, ucis, ucis.length);
+  const turn = cursorPos?.turn ?? "white";
   return {
     startFen,
     ucis,
@@ -118,10 +117,16 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   const [copied, setCopied] = useState(false);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
   const [premoves, setPremoves] = useState<Premove[]>([]);
+  const [promoAsk, setPromoAsk] = useState<Premove | null>(null);
   const [hintSan, setHintSan] = useState("");
   const archived = useRef(false);
   const began = useRef(performance.now());
   const premoveLock = useRef(false);
+  const cursorRef = useRef(0);
+  const lengthRef = useRef(0);
+  cursorRef.current = state.cursor;
+  lengthRef.current = state.ucis.length;
+  const evalCache = useRef(new Map<string, number>());
   const sound = useVault((s) => s.sound);
   const archive = useVault((s) => s.archive);
   const remote = Boolean(config.onUserMove);
@@ -143,7 +148,12 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   const botToMove = Boolean(config.bot) && config.human !== "both" && atEnd && !state.ending && config.human !== turn;
 
   useEffect(() => {
-    if (!viewFen || state.thinking || botToMove) return;
+    if (!viewFen || !atEnd || state.thinking || botToMove) return;
+    const cached = evalCache.current.get(viewFen);
+    if (cached != null) {
+      setWhiteCp(cached);
+      return;
+    }
     let cancel = false;
     const side = viewFen.split(" ")[1] === "b" ? "black" : "white";
     void Engine.shared()
@@ -151,13 +161,15 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       .then((res) => {
         if (cancel) return;
         const cp = cpOf(res);
-        setWhiteCp(side === "white" ? cp : -cp);
+        const white = side === "white" ? cp : -cp;
+        evalCache.current.set(viewFen, white);
+        setWhiteCp(white);
       })
       .catch(() => {});
     return () => {
       cancel = true;
     };
-  }, [viewFen, state.thinking, botToMove]);
+  }, [viewFen, atEnd, state.thinking, botToMove]);
 
   useEffect(() => {
     if (!state.clock || state.ending) return;
@@ -186,8 +198,8 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   }, [now, state.clock, state.ending, state.startFen, state.ucis]);
 
   useEffect(() => {
-    if (state.ending) config.onEnd?.(state.ending);
-  }, [state.ending, config.onEnd]);
+    if (state.ending) config.onEnd?.(state.ending, { startFen: state.startFen, ucis: state.ucis });
+  }, [state.ending, state.startFen, state.ucis, config.onEnd]);
 
   useEffect(() => {
     if (!config.showHint || !userTurn || !viewFen) {
@@ -224,10 +236,8 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       if (s.ending && !branch) return s;
       const ucis = [...s.ucis.slice(0, at), uci];
       const sans = [...s.sans.slice(0, at), san];
-      const keys = s.keys.slice(0, at + 1);
       const next = positionAt(s.startFen, ucis, ucis.length);
-      if (next) keys.push(fenKey(fenOf(next)));
-      else if (keys.at(-1)) keys.push(keys.at(-1)!);
+      const keys = replayKeys(s.startFen, ucis);
       let ending = next ? endingOf(next, keys) : null;
       let clock = s.clock;
       const timedOut = s.ending?.reason.startsWith("Tempo") ?? false;
@@ -283,22 +293,27 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   }
 
   useEffect(() => {
-    if (!userTurn || state.ending || !atEnd || !pos || !premoves.length || premoveLock.current) return;
+    if (!userTurn || state.ending || !atEnd || !pos || !premoves.length || premoveLock.current || promoAsk) return;
     const pm = premoves[0]!;
-    const move = legalMove(pos, pm.from, pm.to, pm.promotion);
-    if (!move) {
+    const trial = legalMove(pos, pm.from, pm.to, pm.promotion ?? (needsPromotion(pos, pm.from, pm.to) ? "queen" : undefined));
+    if (!trial) {
       setPremoves([]);
       return;
     }
+    if (needsPromotion(pos, pm.from, pm.to) && !pm.promotion) {
+      setPromoAsk(pm);
+      setPremoves((q) => q.slice(1));
+      return;
+    }
     premoveLock.current = true;
-    const packed = sanAndUci(pos, move);
+    const packed = sanAndUci(pos, trial);
     setPremoves((q) => q.slice(1));
     pushMove(packed.uci, packed.san, pos.turn);
     window.setTimeout(() => {
       premoveLock.current = false;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userTurn, state.ucis.length, state.ending, premoves]);
+  }, [userTurn, state.ucis.length, state.ending, premoves, promoAsk]);
 
   useEffect(() => {
     const inbound = config.inbound;
@@ -351,10 +366,10 @@ export function LiveGame({ config }: { config: LiveConfig }) {
           uci = slip ? slipUci(res, config.slipElo ?? nominal, legal) : weakenUci(pos, res.uci, nominal);
         }
         if (cancel) return;
-        setState((s) => {
-          if (s.epoch !== epoch || s.ending || s.cursor !== s.ucis.length) return { ...s, thinking: false };
-          return s;
-        });
+        if (cursorRef.current !== lengthRef.current) {
+          setState((s) => (s.thinking ? { ...s, thinking: false } : s));
+          return;
+        }
         const live = positionAt(state.startFen, state.ucis, state.ucis.length);
         if (!live || cancel) return;
         const from = uci.slice(0, 2);
@@ -381,11 +396,12 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     })();
     return () => {
       cancel = true;
+      Engine.shared().stop();
       setState((s) => (s.thinking ? { ...s, thinking: false } : s));
     };
-    // The bot should think when the ply at the end changes.
+    // Só pensa quando um lance novo chega ao fim. Navegar ou refazer não pede cálculo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.ucis.length, state.cursor, state.epoch, state.ending, turn]);
+  }, [state.ucis.length, state.epoch, state.ending]);
 
   useEffect(() => {
     const end = config.externalEnd;
@@ -417,6 +433,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       ucis: state.ucis,
       variant960: Boolean(config.variant960),
       tc: config.tcLabel,
+      kind: config.kind ?? "play",
       durationMs: Math.round(performance.now() - began.current),
       botName: config.bot?.name,
       human: config.human,
@@ -440,13 +457,31 @@ export function LiveGame({ config }: { config: LiveConfig }) {
   function undo() {
     if (remote) return;
     setPremoves([]);
-    setState((s) => ({ ...s, cursor: Math.max(0, s.cursor - 1) }));
+    setPromoAsk(null);
+    Engine.shared().stop();
+    setState((s) => ({ ...s, cursor: Math.max(0, s.cursor - 1), thinking: false }));
   }
 
   function redo() {
     if (remote) return;
     setPremoves([]);
-    setState((s) => ({ ...s, cursor: Math.min(s.ucis.length, s.cursor + 1) }));
+    setPromoAsk(null);
+    Engine.shared().stop();
+    setState((s) => ({ ...s, cursor: Math.min(s.ucis.length, s.cursor + 1), thinking: false }));
+  }
+
+  function playAgain() {
+    if (config.onPlayAgain) {
+      config.onPlayAgain();
+      return;
+    }
+    archived.current = false;
+    began.current = performance.now();
+    setPremoves([]);
+    setPromoAsk(null);
+    setRatingDelta(null);
+    setHintSan("");
+    setState(fresh(config));
   }
 
   function resign() {
@@ -464,8 +499,14 @@ export function LiveGame({ config }: { config: LiveConfig }) {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key === "ArrowLeft") setState((s) => ({ ...s, cursor: Math.max(0, s.cursor - 1) }));
-      if (e.key === "ArrowRight") setState((s) => ({ ...s, cursor: Math.min(s.ucis.length, s.cursor + 1) }));
+      if (e.key === "ArrowLeft") {
+        Engine.shared().stop();
+        setState((s) => ({ ...s, cursor: Math.max(0, s.cursor - 1), thinking: false }));
+      }
+      if (e.key === "ArrowRight") {
+        Engine.shared().stop();
+        setState((s) => ({ ...s, cursor: Math.min(s.ucis.length, s.cursor + 1), thinking: false }));
+      }
       if (e.key === "f") setOrientation((o) => opposite(o));
       if (e.key === "Escape") setPremoves([]);
     }
@@ -517,11 +558,23 @@ export function LiveGame({ config }: { config: LiveConfig }) {
                 isPromotion={(from, to) => needsPromotion(pos, from, to)}
                 onMove={tryMove}
                 premoves={premoves}
-                allowPremove={config.human !== "both" && !state.ending && atEnd && !userTurn}
+                allowPremove={config.human !== "both" && !state.ending && atEnd && !userTurn && !promoAsk}
                 premoveColor={config.human === "black" ? "black" : "white"}
-                onPremove={(from, to, promotion) =>
-                  setPremoves((q) => [...q, { from, to, promotion }].slice(-5))
-                }
+                preDests={premoveDests(pos, config.human === "black" ? "black" : "white")}
+                pendingPromotion={promoAsk}
+                onPromote={(role) => {
+                  if (!promoAsk || !pos) return;
+                  const move = legalMove(pos, promoAsk.from, promoAsk.to, role);
+                  setPromoAsk(null);
+                  if (!move) return;
+                  const packed = sanAndUci(pos, move);
+                  pushMove(packed.uci, packed.san, pos.turn);
+                }}
+                onPremove={(from, to) => {
+                  const map = premoveDests(pos, config.human === "black" ? "black" : "white");
+                  if (!map[from]?.includes(to)) return;
+                  setPremoves((q) => [...q, { from, to }].slice(-5));
+                }}
               />
             </div>
           </div>
@@ -554,10 +607,17 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         </p>
         {config.showHint && hintSan && !state.ending && <p className="mt-2 text-sm text-brass">Sugestão: {hintSan}</p>}
         {state.ending && (
-          <p className="mt-3 rounded-xl bg-felt px-3 py-2 text-sm">
-            {state.ending.result} · {state.ending.reason}
-            {ratingDelta != null ? ` · rating ${ratingDelta > 0 ? "+" : ""}${ratingDelta}` : ""}
-          </p>
+          <div className="mt-3 rounded-xl bg-felt px-3 py-2 text-sm">
+            <p>
+              {state.ending.result} · {state.ending.reason}
+              {ratingDelta != null ? ` · rating ${ratingDelta > 0 ? "+" : ""}${ratingDelta}` : ""}
+            </p>
+            {!remote && (
+              <button type="button" className="btn btn-primary mt-3 w-full" onClick={playAgain}>
+                Jogar de novo
+              </button>
+            )}
+          </div>
         )}
         <button type="button" className="btn mt-3" onClick={copyPgn}>
           {copied ? "PGN copiado" : "Copiar PGN"}
@@ -568,14 +628,14 @@ export function LiveGame({ config }: { config: LiveConfig }) {
             <li key={row.white?.ply ?? row.black?.ply} className="grid grid-cols-[2.5rem_1fr_1fr] gap-1">
               <span className="text-muted">{row.no}.</span>
               {row.white ? (
-                <button type="button" className={state.cursor === row.white.ply ? "text-brass" : ""} onClick={() => setState((s) => ({ ...s, cursor: row.white!.ply }))}>
+                <button type="button" className={state.cursor === row.white.ply ? "text-brass" : ""} onClick={() => { Engine.shared().stop(); setState((s) => ({ ...s, cursor: row.white!.ply, thinking: false })); }}>
                   {row.white.san}
                 </button>
               ) : (
                 <span className="text-muted">…</span>
               )}
               {row.black ? (
-                <button type="button" className={state.cursor === row.black.ply ? "text-brass" : ""} onClick={() => setState((s) => ({ ...s, cursor: row.black!.ply }))}>
+                <button type="button" className={state.cursor === row.black.ply ? "text-brass" : ""} onClick={() => { Engine.shared().stop(); setState((s) => ({ ...s, cursor: row.black!.ply, thinking: false })); }}>
                   {row.black.san}
                 </button>
               ) : (
@@ -585,6 +645,27 @@ export function LiveGame({ config }: { config: LiveConfig }) {
           ))}
         </ol>
         <div className="mt-4 flex flex-wrap gap-2">
+          {(() => {
+            const claim: Claim | null = atEnd && !state.ending && pos ? claimOf(pos, state.keys) : null;
+            const mine = config.human === "both" || config.human === turn;
+            if (!claim || !mine) return null;
+            const reason = claim === "repetition" ? "Tripla repetição reivindicada" : "Regra dos 50 lances reivindicada";
+            return (
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  setState((s) => ({
+                    ...s,
+                    ending: { reason, result: "1/2-1/2" },
+                    clock: s.clock ? { ...s.clock, running: false } : s.clock,
+                  }))
+                }
+              >
+                Reivindicar empate
+              </button>
+            );
+          })()}
           {remote && (
             <button type="button" className="btn" onClick={config.onDrawOffer} disabled={Boolean(state.ending)}>
               Propor empate

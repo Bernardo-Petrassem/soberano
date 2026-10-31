@@ -60,6 +60,16 @@ function Chart({ data, color, unit }: { data: { name: string; value: number }[];
   );
 }
 
+function clockBucket(game: ArchivedGame): string | null {
+  if (game.kind === "opening" || game.kind === "endgame" || game.kind === "analysis") return null;
+  if (game.variant960 || /960/.test(game.tc)) return "Xadrez 960";
+  const tc = game.tc.replace(/ · 960$/, "");
+  if (TIME_CONTROLS.some((t) => t.label === tc)) return tc;
+  if (/^(\d+s(\+\d+)?|\d+\+\d+|Sem relógio)$/.test(tc)) return tc;
+  if (game.kind === "play" && tc) return tc;
+  return null;
+}
+
 function humanScore(game: ArchivedGame) {
   if (!game.human || game.human === "both") return null;
   if (game.result === "1/2-1/2") return 0.5;
@@ -110,10 +120,13 @@ export function Evolution({ onOpen }: { onOpen: (id: string) => void }) {
   }, [games]);
 
   const modalities = useMemo(() => {
-    const labels: string[] = TIME_CONTROLS.map((t) => t.label);
-    for (const game of games) if (!labels.includes(game.tc)) labels.push(game.tc);
+    const labels = [...TIME_CONTROLS.map((t) => t.label), "Xadrez 960"];
+    for (const game of games) {
+      const bucket = clockBucket(game);
+      if (bucket && !labels.includes(bucket)) labels.push(bucket);
+    }
     return labels.map((label) => {
-      const found = games.filter((g) => g.tc === label);
+      const found = games.filter((g) => clockBucket(g) === label);
       if (!found.length) return { label, game: null as ArchivedGame | null };
       const best = [...found].sort((a, b) => {
         const as = (humanScore(a) ?? 0) * 10 + ((a.ratingAfter ?? a.ratingBefore ?? 0) - (a.ratingBefore ?? 0)) / 100;

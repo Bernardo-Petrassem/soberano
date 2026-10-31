@@ -27,6 +27,17 @@ type Report = {
   hanging: number;
 };
 
+function lineAgrees(item: PuzzleAttempt): boolean {
+  if (item.played.length < item.line.length) return false;
+  for (let i = 0; i < item.line.length; i++) {
+    const played = item.played[i] ?? "";
+    const expected = item.line[i] ?? "";
+    if (played.slice(0, 4) !== expected.slice(0, 4)) return false;
+    if (played[4] && expected[4] && played[4] !== expected[4]) return false;
+  }
+  return true;
+}
+
 export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[]; auto?: boolean }) {
   const rating = useVault((s) => s.rating);
   const [index, setIndex] = useState(0);
@@ -54,16 +65,16 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
         const detail = await reviewDetail(item.fen, item.played, () => undefined, rating);
         const user = detail.marks.filter((_, idx) => idx % 2 === 1);
         const precision = user.length ? Math.round(user.reduce((sum, mark) => sum + WEIGHT[mark], 0) / user.length) : item.ok ? 100 : 0;
-        const markedMiss = user.filter((mark) => mark === "Imprecisão" || mark === "Erro" || mark === "Gafe").length;
-        const missed = markedMiss + (!item.ok && markedMiss === 0 ? 1 : 0);
+        const missed = user.filter((mark) => mark === "Imprecisão" || mark === "Erro" || mark === "Gafe").length;
         let hanging = 0;
         const pos = loadFen(item.fen);
         if (pos) {
           const solver = positionAt(item.fen, item.line, 1)?.turn;
           item.played.forEach((uci, idx) => {
             const mover = pos.turn;
+            const mark = detail.marks[idx];
             playUciOn(pos, uci);
-            if (solver && mover === solver) hanging += hangingCount(pos, mover);
+            if (solver && mover === solver && (mark === "Erro" || mark === "Gafe")) hanging += hangingCount(pos, mover);
           });
         }
         out.push({ ...detail, precision, missed, hanging });
@@ -87,7 +98,7 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
   const bestUser = report?.best.filter((_, idx) => idx % 2 === 1) ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="stable space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <Panel>
           <p className="text-sm text-muted">Precisão</p>
@@ -120,7 +131,7 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
                   setStep(attempt.played.length);
                 }}
               >
-                {attempt.ok ? "Certo" : "Falhou"} · {attempt.rating}
+                {attempt.ok || lineAgrees(attempt) ? "Certo" : "Falhou"} · {attempt.rating}
                 {reports[i] ? ` · ${reports[i]!.precision}%` : ""}
               </button>
             </li>
@@ -146,11 +157,11 @@ export function AttemptReview({ items, auto = false }: { items: PuzzleAttempt[];
           </div>
           <Panel className="mt-3">
             <p className="text-sm">
-              {item.ok ? "Resolvido" : "Não resolvido"}
+              {item.ok || lineAgrees(item) ? "Resolvido" : "Não resolvido"}
               {report ? ` · precisão ${report.precision}% · ${report.missed} chances perdidas · ${report.hanging} peças penduradas` : ""}
             </p>
             <p className="mt-2 text-sm text-muted">Melhores lances do motor</p>
-            <p className="mt-1 text-sm">{bestUser.length ? bestUser.join(" ") : busy ? "…" : "—"}</p>
+            <p className="mt-1 h-16 overflow-hidden text-sm leading-5">{bestUser.length ? bestUser.join(" ") : "\u00a0"}</p>
             {report && step > 0 && report.marks[step - 1] && (
               <p className="mt-2 text-sm">
                 Lance {step}: <span className={MARK_CLASS[report.marks[step - 1]!]}>{report.marks[step - 1]}</span>

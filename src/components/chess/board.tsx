@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Color, Role } from "chessops/types";
 import { piecesOf } from "@/lib/chess/logic";
 import { publicUrl } from "@/lib/chess/public-url";
@@ -58,6 +58,10 @@ export function Board({
   allowPremove = false,
   premoveColor,
   onPremove,
+  preDests = {},
+  hintArrow = null,
+  pendingPromotion = null,
+  onPromote,
 }: {
   fen: string;
   orientation?: Color;
@@ -74,6 +78,10 @@ export function Board({
   allowPremove?: boolean;
   premoveColor?: Color;
   onPremove?: (from: string, to: string, promotion?: Role) => void;
+  preDests?: Record<string, string[]>;
+  hintArrow?: [string, string] | null;
+  pendingPromotion?: { from: string; to: string } | null;
+  onPromote?: (role: Role) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -90,6 +98,7 @@ export function Board({
   const arrowFrom = useRef<string | null>(null);
   const hold = useRef<number | 0>(0);
   const leftStreak = useRef(0);
+  const markerId = useId().replace(/:/g, "");
   const pieces = piecesOf(fen);
   const premoveOn = Boolean(allowPremove && onPremove && !interactive && !editRole);
 
@@ -116,14 +125,13 @@ export function Board({
       return;
     }
     if (premoveOn) {
-      const target = pieceAt(to);
       const own = premoveColor ?? orientation;
+      const target = pieceAt(to);
       if (target && target.color === own) {
         setSelected(to);
         return;
       }
-      if (isPromotion?.(from, to)) {
-        setPromo({ from, to });
+      if (!preDests[from]?.includes(to)) {
         setSelected(null);
         return;
       }
@@ -167,7 +175,7 @@ export function Board({
     }
     if (editRole && onEdit) return;
     const piece = pieceAt(square);
-    if (selected && (premoveOn || dests[selected]?.includes(square))) {
+    if (selected && (premoveOn ? Boolean(preDests[selected]?.includes(square)) || pieceAt(square)?.color === (premoveColor ?? orientation) : dests[selected]?.includes(square))) {
       finish(selected, square);
       return;
     }
@@ -239,8 +247,8 @@ export function Board({
             background: dark ? "var(--color-dark-sq)" : "var(--color-light-sq)",
           }}
         >
-          {fromSq && <span className="absolute inset-0" style={{ background: "rgba(255,244,196,0.94)" }} />}
-          {toSq && <span className="absolute inset-0" style={{ background: "rgba(255,214,40,0.78)" }} />}
+          {fromSq && <span className="absolute inset-0" style={{ background: "rgba(184, 112, 24, 0.82)" }} />}
+          {toSq && <span className="absolute inset-0" style={{ background: "rgba(255, 214, 64, 0.78)" }} />}
           {isSel && <span className="absolute inset-0" style={{ boxShadow: "inset 0 0 0 3px var(--color-brass)" }} />}
           {marked && <span className="absolute inset-1 rounded-full" style={{ background: "color-mix(in srgb, var(--color-blood) 45%, transparent)" }} />}
           {checkSquare === name && (
@@ -297,6 +305,23 @@ export function Board({
       >
         {grid}
         <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">
+          {hintArrow && (() => {
+            const A = centerOf(hintArrow[0], orientation);
+            const B = centerOf(hintArrow[1], orientation);
+            return (
+              <line
+                x1={A.x}
+                y1={A.y}
+                x2={B.x}
+                y2={B.y}
+                stroke="var(--color-brass)"
+                strokeWidth="2.1"
+                strokeLinecap="round"
+                markerEnd={`url(#hint-${markerId})`}
+                opacity="0.95"
+              />
+            );
+          })()}
           {arrows.map((a) => {
             const A = centerOf(a.from, orientation);
             const B = centerOf(a.to, orientation);
@@ -310,19 +335,22 @@ export function Board({
                 stroke="var(--color-felt-2)"
                 strokeWidth="1.7"
                 strokeLinecap="round"
-                markerEnd="url(#arrow)"
+                markerEnd={`url(#arrow-${markerId})`}
                 opacity="0.9"
               />
             );
           })}
           <defs>
-            <marker id="arrow" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+            <marker id={`arrow-${markerId}`} markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
               <path d="M0 0 L4 2 L0 4 z" fill="var(--color-felt-2)" />
+            </marker>
+            <marker id={`hint-${markerId}`} markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+              <path d="M0 0 L4 2 L0 4 z" fill="var(--color-brass)" />
             </marker>
           </defs>
         </svg>
-        {promo && (
-          <div className="absolute inset-0 flex items-center justify-center bg-ink/50">
+        {(pendingPromotion || promo) && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-ink/50">
             <div className="flex gap-2 rounded-xl bg-panel p-3 ring-1 ring-line">
               {(["queen", "rook", "bishop", "knight"] as Role[]).map((role) => (
                 <button
@@ -330,12 +358,16 @@ export function Board({
                   type="button"
                   className="flex size-14 items-center justify-center rounded-lg bg-light-sq"
                   onClick={() => {
-                    if (premoveOn) onPremove?.(promo.from, promo.to, role);
-                    else onMove?.(promo.from, promo.to, role);
+                    if (pendingPromotion) {
+                      onPromote?.(role);
+                      return;
+                    }
+                    if (premoveOn) onPremove?.(promo!.from, promo!.to, role);
+                    else onMove?.(promo!.from, promo!.to, role);
                     setPromo(null);
                   }}
                 >
-                  <Glyph role={role} color={sideToMove} />
+                  <Glyph role={role} color={pendingPromotion ? (premoveColor ?? sideToMove) : sideToMove} />
                 </button>
               ))}
             </div>

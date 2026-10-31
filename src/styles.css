@@ -94,6 +94,18 @@
     border-color: var(--color-brass);
     outline: none;
   }
+  .no-spin {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .no-spin::-webkit-outer-spin-button,
+  .no-spin::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .stable {
+    overflow-anchor: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
