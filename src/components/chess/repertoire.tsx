@@ -8,14 +8,35 @@ import { corpus, matchOpening, type Opening } from "@/lib/chess/corpus";
 import { START_FEN, checkedKing, destsOf, fenOf, legalMove, loadFen, needsPromotion, openingColor, sanAndUci } from "@/lib/chess/logic";
 import { useVault } from "@/lib/chess/store";
 
+const FAMILIES = ["Flanco", "Semiabertas", "Abertas", "Fechadas", "Indianas"];
+
+function lineFen(moves: string) {
+  const chess = loadFen(START_FEN);
+  if (!chess) return START_FEN;
+  for (const san of moves.split(" ")) {
+    if (!san) continue;
+    const mv = parseSan(chess, san);
+    if (!mv) break;
+    chess.play(mv);
+  }
+  return fenOf(chess);
+}
+
+function rootOf(name: string) {
+  return name.split(":")[0]!.trim();
+}
+
 export function Repertoire() {
   const cards = useVault((s) => s.repertoire);
   const upsert = useVault((s) => s.upsertCard);
   const grade = useVault((s) => s.gradeCard);
-  const remove = useVault((s) => s.removeCard);
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState<string | null>(null);
+  const [family, setFamily] = useState("");
+  const [page, setPage] = useState(0);
+  const [openRoot, setOpenRoot] = useState("");
+  const [preview, setPreview] = useState<Opening | null>(null);
+  const [training, setTraining] = useState(false);
   const [ply, setPly] = useState(0);
   const [note, setNote] = useState("");
 
@@ -23,20 +44,40 @@ export function Repertoire() {
     void corpus().then((c) => setOpenings(c.openings));
   }, []);
 
-  const found = useMemo(() => {
+  const pool = useMemo(() => {
     const q = query.trim();
-    if (q.length < 2 && !/^[a-e]/i.test(q)) return [];
-    return openings.filter((o) => matchOpening(o, q)).slice(0, 12);
-  }, [openings, query]);
+    return openings.filter((o) => {
+      if (family && o.family !== family) return false;
+      return matchOpening(o, q);
+    });
+  }, [openings, query, family]);
 
-  const due = cards.filter((c) => c.due <= Date.now()).length;
-  const card = cards.find((c) => c.id === active) ?? null;
-  const side = card ? openingColor(card.moves) : "white";
-  const sans = card?.moves.split(" ").filter(Boolean) ?? [];
+  const roots = useMemo(() => {
+    const map = new Map<string, Opening[]>();
+    for (const opening of pool) {
+      const root = rootOf(opening.name);
+      const list = map.get(root) ?? [];
+      list.push(opening);
+      map.set(root, list);
+    }
+    return [...map.entries()];
+  }, [pool]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [query, family]);
+
+  const pageSize = 12;
+  const pageCount = Math.max(1, Math.ceil(roots.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const windowed = roots.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  const saved = preview ? cards.find((card) => card.eco === preview.eco && card.name === preview.name) : null;
+  const side = preview ? openingColor(preview.moves) : "white";
+  const sans = preview?.moves.split(" ").filter(Boolean) ?? [];
   const replay = useMemo(() => {
     const chess = loadFen(START_FEN);
     let last: [string, string] | null = null;
-    if (!chess) return { chess: null, last };
+    if (!chess || !training) return { chess: null, last };
     for (let i = 0; i < ply; i++) {
       const mv = parseSan(chess, sans[i] ?? "");
       if (!mv || !("from" in mv)) break;
@@ -44,24 +85,24 @@ export function Repertoire() {
       chess.play(mv);
     }
     return { chess, last };
-  }, [ply, sans]);
+  }, [training, ply, sans]);
 
   useEffect(() => {
     const pos = replay.chess;
-    if (!pos || !card || ply >= sans.length || pos.turn === side) return;
+    if (!pos || !saved || !training || ply >= sans.length || pos.turn === side) return;
     const id = window.setTimeout(() => setPly((n) => n + 1), 280);
     return () => window.clearTimeout(id);
-  }, [replay.chess, card, ply, sans.length, side]);
+  }, [replay.chess, saved, training, ply, sans.length, side]);
 
   function play(from: string, to: string, promotion?: Role) {
     const pos = replay.chess;
-    if (!pos || !card || pos.turn !== side || ply >= sans.length) return;
+    if (!pos || !saved || pos.turn !== side || ply >= sans.length) return;
     const move = legalMove(pos, from, to, promotion);
     if (!move) return;
     const packed = sanAndUci(pos, move);
     if (packed.san.replace(/[+#]/g, "") !== (sans[ply] ?? "").replace(/[+#]/g, "")) {
-      setNote(`O repertório joga ${sans[ply]}. A linha volta amanhã de manhã — na verdade, em dez minutos.`);
-      grade(card.id, false);
+      setNote(`O repertório joga ${sans[ply]}. A linha volta em dez minutos.`);
+      grade(saved.id, false);
       setPly(0);
       return;
     }
@@ -69,77 +110,130 @@ export function Repertoire() {
     const next = ply + 1;
     setPly(next);
     if (next >= sans.length) {
-      grade(card.id, true);
+      grade(saved.id, true);
       setNote("Linha memorizada. A próxima revisão fica mais longe.");
     }
   }
 
   const pos = replay.chess;
-  const mine = Boolean(pos && card && pos.turn === side && ply < sans.length);
+  const mine = Boolean(pos && saved && pos.turn === side && ply < sans.length);
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted">
-        {cards.length ? `${cards.length} linhas no repertório · ${due} para rever agora` : "Nenhuma linha guardada. Pesquise pelo nome ou pelo ECO, por exemplo A00."}
-      </p>
-      <input className="field" placeholder="Nome ou ECO (A00)" value={query} onChange={(e) => setQuery(e.target.value)} />
-      {found.length > 0 && (
-        <ul className="max-h-40 space-y-1 overflow-auto text-sm">
-          {found.map((o) => (
-            <li key={`${o.eco}-${o.name}`}>
-              <button
-                type="button"
-                className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-panel-2"
-                onClick={() => {
-                  upsert({ eco: o.eco, name: o.name, moves: o.moves });
-                  setQuery("");
-                  setNote(`${o.eco} entrou no repertório.`);
-                }}
-              >
-                <span className="text-brass">{o.eco}</span> {o.name}
+    <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <Panel>
+        <p className="text-sm text-muted">{openings.length ? `${openings.length.toLocaleString("pt-PT")} linhas` : "A carregar…"}</p>
+        <input className="field mt-2" placeholder="Nome ou ECO" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <button type="button" className={!family ? "btn btn-primary" : "btn"} onClick={() => setFamily("")}>
+            Todas
+          </button>
+          {FAMILIES.map((name) => (
+            <button key={name} type="button" className={family === name ? "btn btn-primary" : "btn"} onClick={() => setFamily(name)}>
+              {name}
+            </button>
+          ))}
+        </div>
+        <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm">
+          {windowed.map(([root, list]) => (
+            <li key={root}>
+              <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2" onClick={() => setOpenRoot((v) => (v === root ? "" : root))}>
+                <span className="text-brass">{list[0]?.eco}</span> {root}
+                <span className="text-muted"> · {list.length}</span>
               </button>
+              {openRoot === root && (
+                <ul className="mb-2 ml-2 space-y-1">
+                  {list.slice(0, 20).map((o) => (
+                    <li key={`${o.eco}-${o.name}-${o.moves}`}>
+                      <button
+                        type="button"
+                        className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-panel-2"
+                        onClick={() => {
+                          setPreview(o);
+                          setTraining(false);
+                          setPly(0);
+                          setNote("");
+                        }}
+                      >
+                        {o.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
-      )}
-      <ul className="max-h-36 space-y-1 overflow-auto text-sm">
-        {cards.map((item) => (
-          <li key={item.id} className="flex items-center gap-2">
-            <button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => { setActive(item.id); setPly(0); setNote(""); }}>
-              <span className="text-brass">{item.eco}</span> {item.name}
-              <span className="text-muted"> · {item.due <= Date.now() ? "rever" : "em dia"}</span>
-            </button>
-            <button type="button" className="text-xs text-muted" onClick={() => remove(item.id)}>
-              Tirar
-            </button>
-          </li>
-        ))}
-      </ul>
-      {card && pos && (
-        <Panel>
-          <p className="font-display text-xl">
-            {card.eco} {card.name}
-          </p>
-          <p className="mt-1 text-sm text-muted">Jogue as {side === "white" ? "brancas" : "pretas"} de memória. Acertar afasta a revisão. Errar traz a linha de volta em dez minutos.</p>
-          <div className="mt-3">
-            <Board
-              fen={fenOf(pos)}
-              orientation={side}
-              dests={mine ? destsOf(pos) : {}}
-              lastMove={replay.last}
-              checkSquare={checkedKing(pos)}
-              interactive={mine}
-              sideToMove={pos.turn}
-              isPromotion={(from, to) => needsPromotion(pos, from, to)}
-              onMove={play}
-            />
-          </div>
-          {note && <p className="mt-2 text-sm text-brass">{note}</p>}
-          <button type="button" className="btn mt-3" onClick={() => { setPly(0); setNote(""); }}>
-            Recomeçar linha
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
+          <button type="button" className="btn" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            Anteriores
           </button>
-        </Panel>
-      )}
+          <span>{roots.length ? `${safePage * pageSize + 1}–${Math.min(roots.length, (safePage + 1) * pageSize)} de ${roots.length}` : "0"}</span>
+          <button type="button" className="btn" disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
+            Seguintes
+          </button>
+        </div>
+      </Panel>
+      <div>
+        {preview ? (
+          <Panel>
+            <h2 className="font-display text-2xl">
+              {preview.eco} {preview.name}
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              {preview.family}. {preview.moves}
+            </p>
+            <div className="mt-3">
+              {training && pos ? (
+                <Board
+                  fen={fenOf(pos)}
+                  orientation={side}
+                  dests={mine ? destsOf(pos) : {}}
+                  lastMove={replay.last}
+                  checkSquare={checkedKing(pos)}
+                  interactive={mine}
+                  sideToMove={pos.turn}
+                  isPromotion={(from, to) => needsPromotion(pos, from, to)}
+                  onMove={play}
+                />
+              ) : (
+                <Board fen={lineFen(preview.moves)} orientation={side} />
+              )}
+            </div>
+            {note && <p className="mt-2 text-sm text-brass">{note}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  upsert({ eco: preview.eco, name: preview.name, moves: preview.moves });
+                  setNote("Linha guardada no repertório.");
+                }}
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  upsert({ eco: preview.eco, name: preview.name, moves: preview.moves });
+                  setTraining(true);
+                  setPly(0);
+                  setNote("");
+                }}
+              >
+                Treinar de memória
+              </button>
+              {training && (
+                <button type="button" className="btn" onClick={() => { setPly(0); setNote(""); }}>
+                  Recomeçar
+                </button>
+              )}
+            </div>
+          </Panel>
+        ) : (
+          <p className="text-muted">Escolha uma abertura. A busca por ECO, como A00, filtra a lista.</p>
+        )}
+      </div>
     </div>
   );
 }

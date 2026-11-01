@@ -62,6 +62,7 @@ export function Board({
   hintArrow = null,
   pendingPromotion = null,
   onPromote,
+  onUndoPremove,
 }: {
   fen: string;
   orientation?: Color;
@@ -82,6 +83,7 @@ export function Board({
   hintArrow?: [string, string] | null;
   pendingPromotion?: { from: string; to: string } | null;
   onPromote?: (role: Role) => void;
+  onUndoPremove?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -98,6 +100,8 @@ export function Board({
   const arrowFrom = useRef<string | null>(null);
   const hold = useRef<number | 0>(0);
   const leftStreak = useRef(0);
+  const rightAt = useRef(0);
+  const rightCommit = useRef(0);
   const markerId = useId().replace(/:/g, "");
   const pieces = piecesOf(fen);
   const premoveOn = Boolean(allowPremove && onPremove && !interactive && !editRole);
@@ -156,6 +160,16 @@ export function Board({
     if (e.button === 2 || e.pointerType === "touch") {
       if (e.button === 2) {
         leftStreak.current = 0;
+        const now = performance.now();
+        if (now - rightAt.current < 450) {
+          rightAt.current = 0;
+          window.clearTimeout(rightCommit.current);
+          arrowFrom.current = null;
+          onUndoPremove?.();
+          e.preventDefault();
+          return;
+        }
+        rightAt.current = now;
         arrowFrom.current = square;
         e.preventDefault();
         return;
@@ -198,17 +212,21 @@ export function Board({
     window.clearTimeout(hold.current);
     const el = ref.current;
     const square = el ? sqAt(e.clientX, e.clientY, el, orientation) : null;
-    if (arrowFrom.current && square) {
+    if (arrowFrom.current && square && (e.button !== 2 || performance.now() - rightAt.current < 800)) {
       const from = arrowFrom.current;
+      const to = square;
       arrowFrom.current = null;
-      if (from === square) {
-        setMarks((m) => (m.includes(square) ? m.filter((s) => s !== square) : [...m, square]));
-      } else {
-        setArrows((list) => {
-          const exists = list.some((a) => a.from === from && a.to === square);
-          return exists ? list.filter((a) => !(a.from === from && a.to === square)) : [...list, { from, to: square }];
-        });
-      }
+      window.clearTimeout(rightCommit.current);
+      rightCommit.current = window.setTimeout(() => {
+        if (from === to) {
+          setMarks((m) => (m.includes(to) ? m.filter((s) => s !== to) : [...m, to]));
+        } else {
+          setArrows((list) => {
+            const exists = list.some((a) => a.from === from && a.to === to);
+            return exists ? list.filter((a) => !(a.from === from && a.to === to)) : [...list, { from, to }];
+          });
+        }
+      }, 280);
     } else {
       arrowFrom.current = null;
     }
@@ -301,7 +319,7 @@ export function Board({
           arrowFrom.current = null;
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className="grid aspect-square w-full touch-none grid-cols-8 grid-rows-8 overflow-hidden rounded-lg shadow-[0_18px_50px_rgb(0_0_0/0.35)] ring-1 ring-line select-none"
+        className="board-frame grid aspect-square w-full touch-none grid-cols-8 grid-rows-8 overflow-hidden rounded-lg ring-1 ring-line select-none"
       >
         {grid}
         <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">

@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { Color } from "chessops/types";
+import { Board } from "@/components/chess/board";
 import { LiveGame } from "@/components/chess/live-game";
+import { Panel } from "@/components/chess/shell";
+import { StrengthField } from "@/components/chess/strength-field";
 import { ENDGAMES, loadFen, type Mark } from "@/lib/chess/logic";
 import { generateEndgame, generateRandomEndgame, type EndgameId } from "@/lib/chess/endgames";
 import { reviewLine } from "@/lib/chess/review";
 import { eloToEngine, strengthName } from "@/lib/chess/strength";
 import { useVault } from "@/lib/chess/store";
-import { StrengthField } from "@/components/chess/strength-field";
 
 const WEIGHT: Record<Mark, number> = {
   Livro: 100,
@@ -28,73 +30,43 @@ export function EndgameLab() {
   const [side, setSide] = useState<Color>("white");
   const [solo, setSolo] = useState(false);
   const [pieces, setPieces] = useState("6");
+  const [focus, setFocus] = useState("");
   const [fen, setFen] = useState<string | null>(null);
-  const [id, setId] = useState("pp");
-  const [title, setTitle] = useState("");
+  const [playing, setPlaying] = useState(false);
   const [spin, setSpin] = useState(0);
   const [precision, setPrecision] = useState<number | null>(null);
   const engine = eloToEngine(elo);
+  const drill = ENDGAMES.find((e) => e.id === focus);
+  const title = focus === "random" ? "Final aleatório" : (drill?.name ?? "Final");
 
-  function begin(nextId: string, nextFen: string, nextTitle: string) {
-    setId(nextId);
-    setFen(nextFen);
-    setTitle(nextTitle);
-    setPrecision(null);
-    setSpin((n) => n + 1);
+  function freshFen(id = focus) {
+    if (id === "random") return generateRandomEndgame(Number(pieces) || 6);
+    return generateEndgame((id || "pp") as EndgameId);
   }
 
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted">Finais fixos ou uma posição nova, com poucas peças. A precisão mede os seus lances contra o motor. O alvo é 100%.</p>
-      <div className="grid grid-cols-2 gap-1.5">
-        {ENDGAMES.map((e) => (
-          <button key={e.id} type="button" className="btn h-14 w-full px-2 text-xs leading-tight" onClick={() => begin(e.id, generateEndgame(e.id as EndgameId), e.name)}>
-            {e.name}
-            <span className="block text-[10px] opacity-70">{best[e.id] != null ? `${best[e.id]}%` : "novo"}</span>
+  if (playing && fen) {
+    return (
+      <div>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button type="button" className="btn" onClick={() => setPlaying(false)}>
+            Parar
           </button>
-        ))}
-      </div>
-      <label className="block text-sm text-muted">
-        Peças no final aleatório (3 a 12)
-        <input
-          className="field no-spin mt-1 max-w-28"
-          inputMode="numeric"
-          value={pieces}
-          onChange={(e) => setPieces(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
-          onBlur={() => {
-            const n = Math.max(3, Math.min(12, Number(pieces) || 6));
-            setPieces(String(n));
-          }}
-        />
-      </label>
-      <button
-        type="button"
-        className="btn"
-        onClick={() => {
-          const n = Math.max(3, Math.min(12, Number(pieces) || 6));
-          begin("random", generateRandomEndgame(n), `Aleatório · ${n} peças`);
-        }}
-      >
-        Gerar final aleatório
-      </button>
-      <StrengthField elo={elo} onChange={setElo} />
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" className={side === "white" ? "btn btn-primary" : "btn"} onClick={() => setSide("white")}>
-          Brancas
-        </button>
-        <button type="button" className={side === "black" ? "btn btn-primary" : "btn"} onClick={() => setSide("black")}>
-          Pretas
-        </button>
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={solo} onChange={(e) => setSolo(e.target.checked)} />
-        Sozinho, sem motor
-      </label>
-      {best[id] != null && <p className="text-sm text-brass">Melhor precisão neste final: {best[id]}%</p>}
-      {precision != null && <p className="text-sm">Precisão desta tentativa: {precision}%</p>}
-      {fen && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setFen(freshFen());
+              setSpin((n) => n + 1);
+              setPrecision(null);
+            }}
+          >
+            Outra posição
+          </button>
+        </div>
+        <h2 className="mb-3 font-display text-2xl">{title}</h2>
+        {precision != null && <p className="mb-3 text-sm">Precisão desta tentativa: {precision}%</p>}
         <LiveGame
-          key={`${id}-${spin}-${side}-${elo}-${solo}`}
+          key={`${focus}-${spin}-${side}-${elo}-${solo}`}
           config={{
             startFen: fen,
             human: solo ? "both" : side,
@@ -105,7 +77,11 @@ export function EndgameLab() {
             slipElo: !solo && side === "black" ? engine.nominal : null,
             whiteName: side === "white" || solo ? "Você" : strengthName(engine.nominal),
             blackName: side === "black" || solo ? "Você" : strengthName(engine.nominal),
-            onPlayAgain: () => begin(id, id === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(id as EndgameId), title),
+            onPlayAgain: () => {
+              setFen(freshFen());
+              setSpin((n) => n + 1);
+              setPrecision(null);
+            },
             onEnd: (_ending, played) => {
               void reviewLine(played.startFen, played.ucis, () => undefined, elo).then((marks) => {
                 const start = loadFen(played.startFen);
@@ -117,12 +93,93 @@ export function EndgameLab() {
                 if (!user.length) return;
                 const pct = Math.round(user.reduce((sum, mark) => sum + WEIGHT[mark], 0) / user.length);
                 setPrecision(pct);
-                setBest(id, pct);
+                setBest(focus, pct);
               });
             },
           }}
         />
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <Panel>
+        <ul className="space-y-1 text-sm">
+          {ENDGAMES.map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                className={`w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2 ${focus === e.id ? "bg-panel-2 text-brass" : ""}`}
+                onClick={() => {
+                  setFocus(e.id);
+                  setFen(generateEndgame(e.id as EndgameId));
+                  setPrecision(null);
+                }}
+              >
+                {e.name}
+                {best[e.id] != null && <span className="text-muted"> · {best[e.id]}%</span>}
+              </button>
+            </li>
+          ))}
+          <li>
+            <button
+              type="button"
+              className={`w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2 ${focus === "random" ? "bg-panel-2 text-brass" : ""}`}
+              onClick={() => {
+                const n = Math.max(3, Math.min(12, Number(pieces) || 6));
+                setPieces(String(n));
+                setFocus("random");
+                setFen(generateRandomEndgame(n));
+                setPrecision(null);
+              }}
+            >
+              Final aleatório
+            </button>
+          </li>
+        </ul>
+      </Panel>
+      <Panel>
+        <h2 className="font-display text-2xl">{focus ? title : "Fila de finais"}</h2>
+        {fen && (
+          <div className="mt-3">
+            <Board fen={fen} orientation={side} />
+          </div>
+        )}
+        {!fen && <p className="mt-3 text-sm text-muted">Escolha um final para o pré-visualizar.</p>}
+        {drill && <p className="mt-3 text-sm text-muted">{drill.goal}</p>}
+        {focus === "random" && (
+          <label className="mt-3 block text-sm text-muted">
+            Peças no final aleatório
+            <input
+              className="field no-spin mt-1 max-w-28"
+              inputMode="numeric"
+              value={pieces}
+              onChange={(e) => setPieces(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
+              onBlur={() => setPieces(String(Math.max(3, Math.min(12, Number(pieces) || 6))))}
+            />
+          </label>
+        )}
+        {best[focus] != null && <p className="mt-3 text-sm text-brass">Melhor precisão: {best[focus]}%</p>}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" className={side === "white" ? "btn btn-primary" : "btn"} onClick={() => setSide("white")}>
+            Brancas
+          </button>
+          <button type="button" className={side === "black" ? "btn btn-primary" : "btn"} onClick={() => setSide("black")}>
+            Pretas
+          </button>
+        </div>
+        <div className="mt-3">
+          <StrengthField elo={elo} onChange={setElo} />
+        </div>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={solo} onChange={(e) => setSolo(e.target.checked)} />
+          Sozinho, sem motor
+        </label>
+        <button type="button" className="btn btn-primary mt-4" disabled={!focus || !fen} onClick={() => setPlaying(true)}>
+          Começar
+        </button>
+      </Panel>
     </div>
   );
 }

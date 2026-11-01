@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chessops/chess";
 import { SquareSet } from "chessops/squareSet";
 import { parseSquare } from "chessops/util";
@@ -11,6 +11,7 @@ import { LiveGame } from "@/components/chess/live-game";
 import { EndgameLab } from "@/components/chess/endgame-lab";
 import { Repertoire } from "@/components/chess/repertoire";
 import { StrengthField } from "@/components/chess/strength-field";
+import { TabStrip } from "@/components/chess/tab-strip";
 import { cpOf, Engine, type GoResult } from "@/lib/chess/engine";
 import { useLab } from "@/lib/chess/lab";
 import {
@@ -92,9 +93,6 @@ function Analise() {
   const activeId = useLab((s) => s.activeId);
   const note = useLab((s) => s.note);
   const patch = useLab((s) => s.patch);
-  const activate = useLab((s) => s.activate);
-  const hide = useLab((s) => s.hide);
-  const close = useLab((s) => s.close);
   const setNote = useLab((s) => s.setNote);
   const tab = tabs.find((item) => item.id === activeId) ?? tabs[0]!;
   const [tool, setTool] = useState<{ color: Color; role: Role } | "erase" | null>(null);
@@ -104,7 +102,6 @@ function Analise() {
   const [names, setNames] = useState<{ eco: string; name: string }[]>([]);
   const [progress, setProgress] = useState("");
   const [section, setSection] = useState<"estudo" | "aberturas" | "finais">("estudo");
-  const [showHidden, setShowHidden] = useState(false);
   const [train, setTrain] = useState(false);
   const [local, setLocal] = useState(false);
   const [elo, setElo] = useState(1200);
@@ -116,45 +113,53 @@ function Analise() {
   const [copied, setCopied] = useState(false);
   const cache = useRef(new Map<string, GoResult>());
 
-  const pos = positionAt(tab.fen, tab.ucis, tab.cursor);
+  const pos = useMemo(() => positionAt(tab.fen, tab.ucis, tab.cursor), [tab.fen, tab.ucis, tab.cursor]);
   const view = pos ? fenOf(pos) : tab.fen;
-  const visible = tabs.filter((item) => !item.hidden);
-  const hidden = tabs.filter((item) => item.hidden);
 
   useEffect(() => {
-    if (!pos || (!engineOn && !hintOn)) {
-      if (!hintOn) setHintArrow(null);
+    if (!view || (!engineOn && !hintOn)) {
+      setHintArrow(null);
       return;
     }
-    const key = `${view}:${engineOn ? "on" : "hint"}`;
-    const cached = cache.current.get(key);
+    const key = `${view}:${engineOn ? "full" : "hint"}`;
     const apply = (res: GoResult) => {
       if (engineOn) setLines(res);
       const side = view.split(" ")[1] === "b" ? "black" : "white";
       const cp = cpOf(res);
-      setWhiteCp(side === "white" ? cp : -cp);
-      if (hintOn && res.uci.length >= 4) setHintArrow([res.uci.slice(0, 2), res.uci.slice(2, 4)]);
-      else setHintArrow(null);
+      const white = side === "white" ? cp : -cp;
+      setWhiteCp((prev) => (prev === white ? prev : white));
+      if (!hintOn) return;
+      if (res.uci.length >= 4) {
+        const from = res.uci.slice(0, 2);
+        const to = res.uci.slice(2, 4);
+        setHintArrow((prev) => (prev && prev[0] === from && prev[1] === to ? prev : [from, to]));
+      } else {
+        setHintArrow(null);
+      }
     };
+    const cached = cache.current.get(key);
     if (cached) {
       apply(cached);
       return;
     }
     let cancel = false;
-    void Engine.shared()
-      .go(view, { movetime: engineOn ? 350 : 160, multipv: engineOn ? 3 : 1, skill: 20, elo: null })
-      .then((res) => {
-        if (cancel) return;
-        cache.current.set(key, res);
-        apply(res);
-      })
-      .catch(() => {
-        if (!cancel) setNote("Motor indisponível.");
-      });
+    const timer = window.setTimeout(() => {
+      void Engine.shared()
+        .go(view, { movetime: engineOn ? 220 : 70, multipv: engineOn ? 3 : 1, skill: 20, elo: null })
+        .then((res) => {
+          if (cancel) return;
+          cache.current.set(key, res);
+          apply(res);
+        })
+        .catch(() => {
+          if (!cancel && engineOn) setNote("Motor indisponível.");
+        });
+    }, 140);
     return () => {
       cancel = true;
+      window.clearTimeout(timer);
     };
-  }, [engineOn, hintOn, view, pos, setNote]);
+  }, [engineOn, hintOn, view, setNote]);
 
   useEffect(() => {
     void corpus().then((c) => setNames(c.namesAt(view)));
@@ -225,37 +230,9 @@ function Analise() {
 
   return (
     <Shell>
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {visible.map((item) => (
-          <div key={item.id} className={item.id === tab.id ? "btn btn-primary gap-1 pr-1" : "btn gap-1 pr-1"}>
-            <button type="button" className="max-w-36 truncate" onClick={() => activate(item.id)}>
-              {item.title}
-            </button>
-            <button type="button" className="px-1 text-xs opacity-70" aria-label="Esconder aba" onClick={() => hide(item.id)}>
-              –
-            </button>
-            <button type="button" className="px-1 text-xs opacity-70" aria-label="Fechar aba" onClick={() => close(item.id)}>
-              ×
-            </button>
-          </div>
-        ))}
-        {hidden.length > 0 && (
-          <button type="button" className="btn" onClick={() => setShowHidden((v) => !v)}>
-            {hidden.length} oculta{hidden.length > 1 ? "s" : ""}
-          </button>
-        )}
-      </div>
-      {showHidden && hidden.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {hidden.map((item) => (
-            <button key={item.id} type="button" className="btn" onClick={() => activate(item.id)}>
-              {item.title}
-            </button>
-          ))}
-        </div>
-      )}
-      {note && <p className="mb-3 text-sm text-blood">{note}</p>}
-      <div className="mb-4 grid grid-cols-3 gap-2 sm:max-w-lg">
+      <TabStrip />
+      {note && <p className="mt-3 text-sm text-blood">{note}</p>}
+      <div className="seg mt-4">
         {(
           [
             ["estudo", "Estudo"],
@@ -263,27 +240,13 @@ function Analise() {
             ["finais", "Finais"],
           ] as const
         ).map(([id, label]) => (
-          <button key={id} type="button" className={section === id ? "btn btn-primary" : "btn"} onClick={() => setSection(id)}>
+          <button key={id} type="button" aria-pressed={section === id} onClick={() => setSection(id)}>
             {label}
           </button>
         ))}
       </div>
-      {section === "aberturas" && (
-        <Panel>
-          <h2 className="font-display text-2xl">Repertório</h2>
-          <div className="mt-3">
-            <Repertoire />
-          </div>
-        </Panel>
-      )}
-      {section === "finais" && (
-        <Panel>
-          <h2 className="font-display text-2xl">Finais</h2>
-          <div className="mt-3">
-            <EndgameLab />
-          </div>
-        </Panel>
-      )}
+      {section === "aberturas" && <div className="mt-4"><Repertoire /></div>}
+      {section === "finais" && <div className="mt-4"><EndgameLab /></div>}
       {section === "estudo" && (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,42rem)_20rem]">
           <div>

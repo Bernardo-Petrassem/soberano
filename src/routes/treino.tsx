@@ -172,15 +172,7 @@ function Treino() {
               ))}
             </div>
             <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm">
-              {query.trim()
-                ? pool.slice(0, 40).map((o) => (
-                    <li key={`${o.eco}-${o.name}-${o.moves}`}>
-                      <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2" onClick={() => setPreview(o)}>
-                        <span className="text-brass">{o.eco}</span> {o.name}
-                      </button>
-                    </li>
-                  ))
-                : windowed.map(([root, list]) => (
+              {windowed.map(([root, list]) => (
                 <li key={root}>
                   <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2" onClick={() => setOpenRoot((v) => (v === root ? "" : root))}>
                     <span className="text-brass">{list[0]?.eco}</span> {root}

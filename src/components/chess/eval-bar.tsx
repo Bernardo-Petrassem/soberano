@@ -8,11 +8,9 @@ export function EvalBar({ whiteCp, orientation }: { whiteCp: number; orientation
   const mate = Math.abs(whiteCp) > 9000;
   const label = mate ? (whiteCp > 0 ? "+M" : "−M") : `${whiteCp > 0 ? "+" : ""}${(whiteCp / 100).toFixed(1)}`;
   return (
-    <div className="relative w-8 shrink-0 self-stretch overflow-hidden rounded-full bg-[#14110e] ring-1 ring-line" title={`Avaliação ${label}`}>
-      <div className="absolute inset-x-0 bottom-0 bg-[#f7f1e6]" style={{ height: `${bottom}%` }} />
-      <span
-        className={`absolute inset-x-0 text-center text-[10px] font-semibold leading-none ${bottom > 22 ? "bottom-1 text-ink" : "top-1 text-[#f7f1e6]"}`}
-      >
+    <div className="relative w-8 shrink-0 self-stretch overflow-hidden rounded-full bg-ink ring-1 ring-line" title={`Avaliação ${label}`}>
+      <div className="absolute inset-x-0 bottom-0 bg-cream" style={{ height: `${bottom}%` }} />
+      <span className={`absolute inset-x-0 text-center text-xs font-semibold leading-none ${bottom > 22 ? "bottom-1 text-ink" : "top-1 text-cream"}`}>
         {label}
       </span>
     </div>

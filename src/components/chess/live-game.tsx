@@ -207,21 +207,25 @@ export function LiveGame({ config }: { config: LiveConfig }) {
       return;
     }
     let cancel = false;
-    void Engine.shared()
-      .go(viewFen, { movetime: 240, skill: 20, elo: null })
-      .then((res) => {
-        if (cancel || !res.uci) return;
-        const live = loadFen(viewFen);
-        if (!live) return;
-        const promo = res.uci[4];
-        const role = promo === "q" ? "queen" : promo === "r" ? "rook" : promo === "b" ? "bishop" : promo === "n" ? "knight" : undefined;
-        const move = legalMove(live, res.uci.slice(0, 2), res.uci.slice(2, 4), role);
-        if (!move || cancel) return;
-        setHintSan(sanAndUci(live, move).san);
-      })
-      .catch(() => {});
+    const fen = viewFen;
+    const timer = window.setTimeout(() => {
+      void Engine.shared()
+        .go(fen, { movetime: 80, skill: 20, elo: null })
+        .then((res) => {
+          if (cancel || !res.uci) return;
+          const live = loadFen(fen);
+          if (!live) return;
+          const promo = res.uci[4];
+          const role = promo === "q" ? "queen" : promo === "r" ? "rook" : promo === "b" ? "bishop" : promo === "n" ? "knight" : undefined;
+          const move = legalMove(live, res.uci.slice(0, 2), res.uci.slice(2, 4), role);
+          if (!move || cancel) return;
+          setHintSan(sanAndUci(live, move).san);
+        })
+        .catch(() => {});
+    }, 160);
     return () => {
       cancel = true;
+      window.clearTimeout(timer);
     };
   }, [config.showHint, userTurn, viewFen]);
 
@@ -575,6 +579,10 @@ export function LiveGame({ config }: { config: LiveConfig }) {
                   if (!map[from]?.includes(to)) return;
                   setPremoves((q) => [...q, { from, to }].slice(-5));
                 }}
+                onUndoPremove={() => {
+                  setPromoAsk(null);
+                  setPremoves((q) => q.slice(0, -1));
+                }}
               />
             </div>
           </div>
@@ -582,7 +590,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
         <div className="mt-3">
           <ClockPill name={orientation === "white" ? config.whiteName : config.blackName} ms={orientation === "white" ? whiteMs : blackMs} active={Boolean(state.clock) && turn === orientation && !state.ending} show={Boolean(state.clock)} />
         </div>
-        {premoves.length > 0 && <p className="mt-2 text-xs text-muted">Pré-lance preparado. Esc apaga.</p>}
+        {premoves.length > 0 && <p className="mt-2 text-xs text-muted">Pré-lance preparado. Dois cliques com o botão direito desfazem o último.</p>}
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <button type="button" className="btn" onClick={() => setState((s) => ({ ...s, cursor: 0 }))}>
             Início
@@ -683,7 +691,7 @@ export function LiveGame({ config }: { config: LiveConfig }) {
 
 function ClockPill({ name, ms, active, show }: { name: string; ms: number; active: boolean; show: boolean }) {
   return (
-    <div className={`flex min-h-11 flex-1 items-center justify-between rounded-xl px-3 ${active ? "bg-brass text-ink" : "bg-panel text-cream"}`}>
+    <div className={`flex min-h-11 flex-1 items-center justify-between rounded-xl px-3 ${active ? "bg-ink text-cream" : "bg-panel text-ink"}`}>
       <span className="truncate text-sm">{name}</span>
       {show && <span className="font-display text-lg tabular-nums">{formatClock(ms)}</span>}
     </div>

@@ -26,8 +26,8 @@ function Home() {
     <Shell>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,24rem)]">
         <div>
-          <p className="text-sm tracking-[0.18em] text-brass uppercase">Estudo local</p>
-          <h1 className="mt-2 font-display text-5xl leading-tight text-cream">O tabuleiro fica neste computador.</h1>
+          <p className="text-sm text-brass">Estudo local</p>
+          <h1 className="mt-2 max-w-xl font-display text-5xl leading-tight text-ink">O tabuleiro fica neste computador.</h1>
           <p className="mt-4 max-w-xl text-lg text-muted">
             Motor Stockfish, {openings ? openings.toLocaleString("pt-PT") : "milhares de"} aberturas da base ECO pública e{" "}
             {puzzles ? puzzles.toLocaleString("pt-PT") : "milhares de"} problemas da base Lichess. Partidas sem servidor de
