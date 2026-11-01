@@ -39,6 +39,49 @@ import { useVault } from "@/lib/chess/store";
 
 export const Route = createFileRoute("/analise")({ component: Analise });
 
+function MoveList({
+  fen,
+  sans,
+  cursor,
+  marks,
+  spaced,
+  onPick,
+}: {
+  fen: string;
+  sans: string[];
+  cursor: number;
+  marks: Mark[] | null;
+  spaced?: boolean;
+  onPick: (ply: number) => void;
+}) {
+  if (!sans.length) return <p className="text-sm text-muted">Nenhum lance ainda.</p>;
+  return (
+    <ol className={`${spaced ? "mt-3 " : ""}max-h-64 space-y-1 overflow-auto text-sm`}>
+      {pairedSans(fen, sans).map((row) => (
+        <li key={row.white?.ply ?? row.black?.ply} className="grid grid-cols-[2.5rem_1fr_1fr] gap-1">
+          <span className="text-muted">{row.no}.</span>
+          {row.white ? (
+            <button type="button" className={cursor === row.white.ply ? "text-brass" : ""} onClick={() => onPick(row.white!.ply)}>
+              {row.white.san}{" "}
+              {marks?.[row.white.ply - 1] && <span className={MARK_CLASS[marks[row.white.ply - 1]!]}>{marks[row.white.ply - 1]}</span>}
+            </button>
+          ) : (
+            <span className="text-muted">…</span>
+          )}
+          {row.black ? (
+            <button type="button" className={cursor === row.black.ply ? "text-brass" : ""} onClick={() => onPick(row.black!.ply)}>
+              {row.black.san}{" "}
+              {marks?.[row.black.ply - 1] && <span className={MARK_CLASS[marks[row.black.ply - 1]!]}>{marks[row.black.ply - 1]}</span>}
+            </button>
+          ) : (
+            <span />
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 const TOOLS: { color: Color; role: Role; label: string }[] = [
   { color: "white", role: "king", label: "R" },
   { color: "white", role: "queen", label: "D" },
@@ -92,6 +135,7 @@ function Analise() {
   const tabs = useLab((s) => s.tabs);
   const activeId = useLab((s) => s.activeId);
   const note = useLab((s) => s.note);
+  const focus = useLab((s) => s.focus);
   const patch = useLab((s) => s.patch);
   const setNote = useLab((s) => s.setNote);
   const tab = tabs.find((item) => item.id === activeId) ?? tabs[0]!;
@@ -117,7 +161,7 @@ function Analise() {
   const view = pos ? fenOf(pos) : tab.fen;
 
   useEffect(() => {
-    if (!view || (!engineOn && !hintOn)) {
+    if (focus || !view || (!engineOn && !hintOn)) {
       setHintArrow(null);
       return;
     }
@@ -159,7 +203,7 @@ function Analise() {
       cancel = true;
       window.clearTimeout(timer);
     };
-  }, [engineOn, hintOn, view, setNote]);
+  }, [engineOn, hintOn, view, setNote, focus]);
 
   useEffect(() => {
     void corpus().then((c) => setNames(c.namesAt(view)));
@@ -229,9 +273,10 @@ function Analise() {
   }
 
   return (
-    <Shell>
+    <Shell bare={focus}>
       <TabStrip />
-      {note && <p className="mt-3 text-sm text-blood">{note}</p>}
+      {!focus && note && <p className="mt-3 text-sm text-blood">{note}</p>}
+      {!focus && (
       <div className="seg mt-4">
         {(
           [
@@ -245,27 +290,28 @@ function Analise() {
           </button>
         ))}
       </div>
-      {section === "aberturas" && <div className="mt-4"><Repertoire /></div>}
-      {section === "finais" && <div className="mt-4"><EndgameLab /></div>}
-      {section === "estudo" && (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,42rem)_20rem]">
+      )}
+      {!focus && section === "aberturas" && <div className="mt-4"><Repertoire /></div>}
+      {!focus && section === "finais" && <div className="mt-4"><EndgameLab /></div>}
+      {(focus || section === "estudo") && (
+        <div className={`grid items-start gap-4 lg:grid-cols-[minmax(0,42rem)_20rem] ${focus ? "mt-4" : ""}`}>
           <div>
             {pos && (
               <div className="flex items-stretch gap-1.5">
-                <EvalBar whiteCp={whiteCp} orientation="white" />
+                {!focus && <EvalBar whiteCp={whiteCp} orientation="white" />}
                 <div className="min-w-0 flex-1">
                   <Board
                     fen={fenOf(pos)}
-                    dests={tool ? {} : destsOf(pos)}
+                    dests={tool && !focus ? {} : destsOf(pos)}
                     lastMove={lastSquares(tab.ucis[tab.cursor - 1])}
                     checkSquare={checkedKing(pos)}
                     interactive
                     sideToMove={pos.turn}
-                    editRole={tool}
-                    hintArrow={hintOn ? hintArrow : null}
+                    editRole={focus ? null : tool}
+                    hintArrow={!focus && hintOn ? hintArrow : null}
                     isPromotion={(from, to) => needsPromotion(pos, from, to)}
                     onEdit={(square) => {
-                      if (!tool) return;
+                      if (!tool || focus) return;
                       const next = editSquare(view, square, tool);
                       setNote(next ? "" : "Não deu. O rei muda de casa se o seleccionar e clicar no destino.");
                       if (!next) return;
@@ -300,13 +346,30 @@ function Analise() {
                 Fim
               </button>
             </div>
-            <button type="button" className={hintOn ? "btn btn-primary mt-3" : "btn mt-3"} aria-pressed={hintOn} onClick={() => setHintOn((v) => !v)}>
-              {hintOn ? "Sugestão ligada" : "Sugestão do Stockfish"}
-            </button>
-            <button type="button" className={engineOn ? "btn btn-primary mt-3 ml-2" : "btn mt-3 ml-2"} onClick={() => setEngineOn((v) => !v)}>
-              {engineOn ? "Motor ligado" : "Ligar motor"}
-            </button>
+            {!focus && (
+              <>
+                <button type="button" className={hintOn ? "btn btn-primary mt-3" : "btn mt-3"} aria-pressed={hintOn} onClick={() => setHintOn((v) => !v)}>
+                  {hintOn ? "Sugestão ligada" : "Sugestão do Stockfish"}
+                </button>
+                <button type="button" className={engineOn ? "btn btn-primary mt-3 ml-2" : "btn mt-3 ml-2"} onClick={() => setEngineOn((v) => !v)}>
+                  {engineOn ? "Motor ligado" : "Ligar motor"}
+                </button>
+              </>
+            )}
           </div>
+          {focus ? (
+            <Panel>
+              <p className="text-sm text-muted">Lances</p>
+              <MoveList
+                fen={tab.fen}
+                sans={tab.sans}
+                cursor={tab.cursor}
+                marks={tab.marks}
+                spaced
+                onPick={(ply) => patch(tab.id, { cursor: ply })}
+              />
+            </Panel>
+          ) : (
           <div className="space-y-4">
             <Panel>
               <div className="flex items-center justify-between gap-2">
@@ -454,30 +517,18 @@ function Analise() {
                   Classificar partida
                 </button>
                 {progress && <p className="mt-2 text-sm text-muted">{progress}</p>}
-                <ol className="mt-3 max-h-64 space-y-1 overflow-auto text-sm">
-                  {pairedSans(tab.fen, tab.sans).map((row) => (
-                    <li key={row.white?.ply ?? row.black?.ply} className="grid grid-cols-[2.5rem_1fr_1fr] gap-1">
-                      <span className="text-muted">{row.no}.</span>
-                      {row.white ? (
-                        <button type="button" className={tab.cursor === row.white.ply ? "text-brass" : ""} onClick={() => patch(tab.id, { cursor: row.white!.ply })}>
-                          {row.white.san} {tab.marks?.[row.white.ply - 1] && <span className={MARK_CLASS[tab.marks[row.white.ply - 1]!]}>{tab.marks[row.white.ply - 1]}</span>}
-                        </button>
-                      ) : (
-                        <span className="text-muted">…</span>
-                      )}
-                      {row.black ? (
-                        <button type="button" className={tab.cursor === row.black.ply ? "text-brass" : ""} onClick={() => patch(tab.id, { cursor: row.black!.ply })}>
-                          {row.black.san} {tab.marks?.[row.black.ply - 1] && <span className={MARK_CLASS[tab.marks[row.black.ply - 1]!]}>{tab.marks[row.black.ply - 1]}</span>}
-                        </button>
-                      ) : (
-                        <span />
-                      )}
-                    </li>
-                  ))}
-                </ol>
+                <MoveList
+                  fen={tab.fen}
+                  sans={tab.sans}
+                  cursor={tab.cursor}
+                  marks={tab.marks}
+                  spaced
+                  onPick={(ply) => patch(tab.id, { cursor: ply })}
+                />
               </Panel>
             )}
           </div>
+          )}
         </div>
       )}
     </Shell>

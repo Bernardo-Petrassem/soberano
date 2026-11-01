@@ -142,17 +142,6 @@
     background: var(--color-paper);
     padding-top: 0.25rem;
   }
-  .tab-eye {
-    width: 2.75rem;
-    height: 2.75rem;
-    flex: none;
-    border-radius: 999px;
-    border: 1.5px solid var(--color-ink);
-    background: transparent;
-  }
-  .tab-eye[aria-pressed="true"] {
-    background: var(--color-ink);
-  }
   .tab-strip {
     display: flex;
     min-width: 0;

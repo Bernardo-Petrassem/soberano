@@ -12,7 +12,7 @@ const LINKS = [
   { to: "/biblioteca", label: "Biblioteca" },
 ] as const;
 
-export function Shell({ children }: { children: React.ReactNode }) {
+export function Shell({ children, bare = false }: { children: React.ReactNode; bare?: boolean }) {
   const hydrated = useHydrated();
   const name = useVault((s) => s.name);
   const setName = useVault((s) => s.setName);
@@ -23,6 +23,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [hydrated, name, setName]);
   return (
     <div className="min-h-screen bg-paper text-ink">
+      {!bare && (
       <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
           <Link to="/" className="shrink-0 font-display text-lg tracking-tight text-ink">
@@ -37,6 +38,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </header>
+      )}
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
     </div>
   );

@@ -57,8 +57,8 @@ export function TabStrip() {
   const tabs = useLab((s) => s.tabs);
   const groups = useLab((s) => s.groups);
   const activeId = useLab((s) => s.activeId);
-  const stripHidden = useLab((s) => s.stripHidden);
-  const setStripHidden = useLab((s) => s.setStripHidden);
+  const focus = useLab((s) => s.focus);
+  const setFocus = useLab((s) => s.setFocus);
   const addBoard = useLab((s) => s.addBoard);
   const createGroup = useLab((s) => s.createGroup);
   const joinGroup = useLab((s) => s.joinGroup);
@@ -80,18 +80,21 @@ export function TabStrip() {
 
   const open = menu?.kind === "group" ? groups.find((group) => group.id === menu.id) : null;
 
+  if (focus) {
+    return (
+      <button type="button" className="btn" onClick={() => setFocus(false)}>
+        Mostrar tudo
+      </button>
+    );
+  }
+
   return (
     <div>
       <div className="tab-bar">
-      <button
-        type="button"
-        className="tab-eye"
-        aria-pressed={!stripHidden}
-        aria-label={stripHidden ? "Mostrar abas" : "Ocultar abas"}
-        onClick={() => setStripHidden(!stripHidden)}
-      />
-      {!stripHidden && (
-        <div className="tab-strip" onDragOver={(e) => e.preventDefault()}>
+      <button type="button" className="btn shrink-0" onClick={() => setFocus(true)}>
+        Só o tabuleiro
+      </button>
+      <div className="tab-strip" onDragOver={(e) => e.preventDefault()}>
           {chunks(tabs, groups).map((chunk) =>
             chunk.kind === "tab" ? (
               <div
@@ -148,7 +151,6 @@ export function TabStrip() {
             +
           </button>
         </div>
-      )}
       </div>
       {menu && (
         <div className="tab-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
@@ -189,9 +191,7 @@ export function TabStrip() {
           )}
         </div>
       )}
-      {!stripHidden && (
-        <p className="mt-2 text-xs text-muted">Botão direito numa aba para a agrupar. Clique no nome do grupo para o recolher. Arraste uma aba para outra para as juntar.</p>
-      )}
+      <p className="mt-2 text-xs text-muted">Botão direito numa aba para a agrupar. Clique no nome do grupo para o recolher. Arraste uma aba para outra para as juntar.</p>
     </div>
   );
 }

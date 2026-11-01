@@ -30,9 +30,9 @@ type Lab = {
   groups: LabGroup[];
   activeId: string;
   note: string;
-  stripHidden: boolean;
+  focus: boolean;
   setNote: (note: string) => void;
-  setStripHidden: (hidden: boolean) => void;
+  setFocus: (focus: boolean) => void;
   patch: (id: string, partial: Partial<LabTab>) => void;
   activate: (id: string) => void;
   close: (id: string) => void;
@@ -97,9 +97,9 @@ export const useLab = create<Lab>((set, get) => ({
   groups: [],
   activeId: first.id,
   note: "",
-  stripHidden: false,
+  focus: false,
   setNote: (note) => set({ note }),
-  setStripHidden: (stripHidden) => set({ stripHidden }),
+  setFocus: (focus) => set({ focus }),
   patch: (id, partial) =>
     set((s) => ({ tabs: s.tabs.map((tab) => (tab.id === id ? { ...tab, ...partial } : tab)) })),
   activate: (id) => set({ activeId: id }),
@@ -176,7 +176,7 @@ export const useLab = create<Lab>((set, get) => ({
     const state = get();
     const existing = state.tabs.find((tab) => tab.pgn && tab.pgn === game.pgn);
     if (existing) {
-      set({ activeId: existing.id, note: "", stripHidden: false });
+      set({ activeId: existing.id, note: "" });
       return true;
     }
     const meaningful = state.tabs.some((tab) => tab.sans.length || tab.pgn || tab.fen !== START_FEN);
@@ -195,7 +195,7 @@ export const useLab = create<Lab>((set, get) => ({
       cursor: game.ucis.length,
       marks: game.marks ?? null,
     });
-    set({ tabs: [...base, tab], activeId: tab.id, note: "", stripHidden: false });
+    set({ tabs: [...base, tab], activeId: tab.id, note: "" });
     return true;
   },
 }));

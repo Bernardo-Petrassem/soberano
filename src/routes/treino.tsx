@@ -10,7 +10,7 @@ import { LiveGame } from "@/components/chess/live-game";
 import { PuzzleRun } from "@/components/chess/puzzle-run";
 import { StrengthField } from "@/components/chess/strength-field";
 import { formatWatch, useStopwatch } from "@/components/chess/stopwatch";
-import { corpus, matchOpening, type Opening, type Puzzle } from "@/lib/chess/corpus";
+import { corpus, EMPTY_OPENING_FILTER, matchOpening, openingFilterActive, openingPasses, type Opening, type OpeningFilterValue, type Puzzle } from "@/lib/chess/corpus";
 import { generateEndgame, generateRandomEndgame, type EndgameId } from "@/lib/chess/endgames";
 import { Engine } from "@/lib/chess/engine";
 import {
@@ -34,12 +34,12 @@ import {
 import { reviewLine } from "@/lib/chess/review";
 import { eloToEngine, strengthName } from "@/lib/chess/strength";
 import { useVault } from "@/lib/chess/store";
+import { OpeningFilterForm } from "@/components/chess/opening-filter";
 
 export const Route = createFileRoute("/treino")({ component: Treino });
 
 type Tab = "aberturas" | "finais" | "meio";
 type DrillId = EndgameId | "random";
-const FAMILIES = ["Flanco", "Semiabertas", "Abertas", "Fechadas", "Indianas"];
 
 function lineFen(moves: string) {
   const chess = loadFen(START_FEN);
@@ -64,7 +64,8 @@ function Treino() {
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [query, setQuery] = useState("");
-  const [family, setFamily] = useState("");
+  const [draft, setDraft] = useState<OpeningFilterValue>(EMPTY_OPENING_FILTER);
+  const [applied, setApplied] = useState<OpeningFilterValue>(EMPTY_OPENING_FILTER);
   const [page, setPage] = useState(0);
   const [openRoot, setOpenRoot] = useState("");
   const [preview, setPreview] = useState<Opening | null>(null);
@@ -89,11 +90,8 @@ function Treino() {
 
   const pool = useMemo(() => {
     const q = query.trim();
-    return openings.filter((o) => {
-      if (family && o.family !== family) return false;
-      return matchOpening(o, q);
-    });
-  }, [openings, query, family]);
+    return openings.filter((o) => openingPasses(o, applied) && matchOpening(o, q));
+  }, [openings, query, applied]);
 
   const roots = useMemo(() => {
     const map = new Map<string, Opening[]>();
@@ -108,7 +106,8 @@ function Treino() {
 
   useEffect(() => {
     setPage(0);
-  }, [query, family]);
+    setOpenRoot("");
+  }, [query, applied]);
 
   const pageSize = 12;
   const pageCount = Math.max(1, Math.ceil(roots.length / pageSize));
@@ -160,17 +159,17 @@ function Treino() {
         <div className="mt-4 grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
           <Panel>
             <p className="text-sm text-muted">{openings.length ? `${openings.length.toLocaleString("pt-PT")} linhas` : "A carregar…"}</p>
-            <input className="field mt-2" placeholder="Nome ou ECO" value={query} onChange={(e) => setQuery(e.target.value)} />
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <button type="button" className={!family ? "btn btn-primary" : "btn"} onClick={() => setFamily("")}>
-                Todas
-              </button>
-              {FAMILIES.map((name) => (
-                <button key={name} type="button" className={family === name ? "btn btn-primary" : "btn"} onClick={() => setFamily(name)}>
-                  {name}
-                </button>
-              ))}
-            </div>
+            <input className="field mt-2" placeholder="Nome, ECO ou lances (e4 e5 Nf3)" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <OpeningFilterForm
+              draft={draft}
+              active={openingFilterActive(applied)}
+              onDraft={setDraft}
+              onApply={() => setApplied({ ...draft })}
+              onClear={() => {
+                setDraft(EMPTY_OPENING_FILTER);
+                setApplied(EMPTY_OPENING_FILTER);
+              }}
+            />
             <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm">
               {windowed.map(([root, list]) => (
                 <li key={root}>
@@ -184,6 +183,7 @@ function Treino() {
                         <li key={`${o.eco}-${o.name}-${o.moves}`}>
                           <button type="button" className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-panel-2" onClick={() => setPreview(o)}>
                             {o.name}
+                            <span className="mt-0.5 block truncate text-xs text-muted">{o.moves}</span>
                           </button>
                         </li>
                       ))}

@@ -3,14 +3,96 @@ import { parseSan } from "chessops/san";
 import { fenKey, fenOf, loadFen, parseMainline, START_FEN, uciOf, ucisFromSans } from "@/lib/chess/logic";
 import { publicUrl } from "@/lib/chess/public-url";
 
-export function matchOpening(opening: Opening, query: string): boolean {
-  const q = query.trim().toLowerCase();
+const SAN_TOKEN =
+  /^(?:O-O-O|O-O|0-0-0|0-0|[NBRQK]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBRQK])?)$/i;
+
+export function cleanSan(token: string): string {
+  return token.trim().replace(/^\d+\.(?=\S)/, "").replace(/[+#]/g, "").toLowerCase();
+}
+
+export function isSanToken(token: string): boolean {
+  return SAN_TOKEN.test(cleanSan(token));
+}
+
+export function queryTokens(query: string): string[] {
+  return query
+    .trim()
+    .replace(/\d+\.(?=\s*[A-Za-zO0])/g, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/[+#]/g, ""))
+    .filter(Boolean);
+}
+
+export function moveList(moves: string): string[] {
+  return moves.split(/\s+/).map((san) => san.replace(/[+#]/g, "")).filter(Boolean);
+}
+
+/** The given plies appear, in this order, as whole moves of the line. */
+export function lineHasMoves(moves: string, query: string): boolean {
+  const want = queryTokens(query).map((token) => cleanSan(token)).filter(Boolean);
+  if (!want.length) return true;
+  const line = moveList(moves).map((san) => san.toLowerCase());
+  let index = 0;
+  for (const san of line) {
+    if (san === want[index]) {
+      index += 1;
+      if (index === want.length) return true;
+    }
+  }
+  return false;
+}
+
+/** A typed sequence is the start of the opening, not a later fragment. */
+export function lineStartsWith(moves: string, query: string): boolean {
+  const want = queryTokens(query).map((token) => cleanSan(token)).filter(Boolean);
+  if (!want.length) return true;
+  const line = moveList(moves).map((san) => san.toLowerCase());
+  if (want.length > line.length) return false;
+  return want.every((san, index) => line[index] === san);
+}
+
+export function openingHasMoves(moves: string, query: string): boolean {
+  const q = query.trim();
   if (!q) return true;
+  const tokens = queryTokens(q);
+  if (tokens.length > 0 && tokens.every((token) => isSanToken(token))) return lineHasMoves(moves, q);
+  return moves.toLowerCase().includes(q.toLowerCase());
+}
+
+export function firstMoveIs(moves: string, query: string): boolean {
+  const q = cleanSan(queryTokens(query)[0] ?? "");
+  if (!q) return true;
+  return (moveList(moves)[0] ?? "").toLowerCase() === q;
+}
+
+export function matchOpening(opening: Opening, query: string): boolean {
+  const q = query.trim();
+  if (!q) return true;
+  const tokens = queryTokens(q);
+  if (tokens.length > 1 && tokens.every((token) => isSanToken(token))) return lineStartsWith(opening.moves, q);
+  if (tokens.length === 1 && isSanToken(tokens[0]!)) return lineHasMoves(opening.moves, q);
+  const lower = q.toLowerCase();
   const eco = opening.eco.toLowerCase();
-  if (/^[a-e]\d{0,2}$/.test(q)) return eco.startsWith(q);
-  return `${eco} ${opening.name} ${opening.family} ${opening.moves}`.toLowerCase().includes(q);
+  if (/^[a-e]\d{0,2}$/.test(lower)) return eco.startsWith(lower);
+  return `${eco} ${opening.name} ${opening.family} ${opening.moves}`.toLowerCase().includes(lower);
 }
 export type Opening = { eco: string; family: string; name: string; moves: string };
+
+export type OpeningFilterValue = { family: string; moves: string; first: string };
+
+export const EMPTY_OPENING_FILTER: OpeningFilterValue = { family: "", moves: "", first: "" };
+
+export function openingPasses(opening: Opening, filter: OpeningFilterValue): boolean {
+  if (filter.family && opening.family !== filter.family) return false;
+  if (!firstMoveIs(opening.moves, filter.first)) return false;
+  if (filter.moves.trim() && !openingHasMoves(opening.moves, filter.moves)) return false;
+  return true;
+}
+
+export function openingFilterActive(filter: OpeningFilterValue): boolean {
+  return Boolean(filter.family || filter.moves.trim() || filter.first.trim());
+}
+
 export type Puzzle = { id: string; fen: string; rating: number; themes: string[]; line: string[] };
 
 type Edge = { uci: string; san: string; name: string; eco: string };
