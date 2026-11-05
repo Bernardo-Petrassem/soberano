@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { Color } from "chessops/types";
 import { Board } from "@/components/chess/board";
+import { EndgameCard, PerfectDrill } from "@/components/chess/endgame-setup";
 import { LiveGame } from "@/components/chess/live-game";
 import { Panel } from "@/components/chess/shell";
-import { StrengthField } from "@/components/chess/strength-field";
 import { ENDGAMES, loadFen, type Mark } from "@/lib/chess/logic";
 import { generateEndgame, generateRandomEndgame, type EndgameId } from "@/lib/chess/endgames";
 import { reviewLine } from "@/lib/chess/review";
@@ -33,6 +33,8 @@ export function EndgameLab() {
   const [focus, setFocus] = useState("");
   const [fen, setFen] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [card, setCard] = useState(false);
+  const [perfect, setPerfect] = useState(false);
   const [spin, setSpin] = useState(0);
   const [precision, setPrecision] = useState<number | null>(null);
   const engine = eloToEngine(elo);
@@ -42,6 +44,36 @@ export function EndgameLab() {
   function freshFen(id = focus) {
     if (id === "random") return generateRandomEndgame(Number(pieces) || 6);
     return generateEndgame((id || "pp") as EndgameId);
+  }
+
+  if (perfect && fen && focus) {
+    return (
+      <PerfectDrill
+        fen={fen}
+        side={side}
+        endgameId={focus}
+        name={title}
+        onExit={() => setPerfect(false)}
+      />
+    );
+  }
+
+  if (card && focus) {
+    return (
+      <EndgameCard
+        title={title}
+        goal={focus === "random" ? "Uma posição nova. O objetivo é calcular, não decorar." : (drill?.goal ?? "")}
+        onBack={() => setCard(false)}
+        onStart={(choice) => {
+          setElo(choice.elo);
+          setSide(choice.side);
+          setSolo(choice.local);
+          setCard(false);
+          if (choice.perfect) setPerfect(true);
+          else setPlaying(true);
+        }}
+      />
+    );
   }
 
   if (playing && fen) {
@@ -161,23 +193,8 @@ export function EndgameLab() {
           </label>
         )}
         {best[focus] != null && <p className="mt-3 text-sm text-brass">Melhor precisão: {best[focus]}%</p>}
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button type="button" className={side === "white" ? "btn btn-primary" : "btn"} onClick={() => setSide("white")}>
-            Brancas
-          </button>
-          <button type="button" className={side === "black" ? "btn btn-primary" : "btn"} onClick={() => setSide("black")}>
-            Pretas
-          </button>
-        </div>
-        <div className="mt-3">
-          <StrengthField elo={elo} onChange={setElo} />
-        </div>
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={solo} onChange={(e) => setSolo(e.target.checked)} />
-          Sozinho, sem motor
-        </label>
-        <button type="button" className="btn btn-primary mt-4" disabled={!focus || !fen} onClick={() => setPlaying(true)}>
-          Começar
+        <button type="button" className="btn btn-primary mt-4" disabled={!focus || !fen} onClick={() => setCard(true)}>
+          Jogar esse final
         </button>
       </Panel>
     </div>

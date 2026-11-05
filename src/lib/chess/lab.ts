@@ -11,6 +11,8 @@ export type LabGroup = {
   collapsed: boolean;
 };
 
+export type LabSection = "estudo" | "aberturas" | "finais";
+
 export type LabTab = {
   id: string;
   title: string;
@@ -23,6 +25,7 @@ export type LabTab = {
   marks: Mark[] | null;
   hidden: boolean;
   groupId: string | null;
+  section: LabSection;
 };
 
 type Lab = {
@@ -37,6 +40,8 @@ type Lab = {
   activate: (id: string) => void;
   close: (id: string) => void;
   addBoard: () => boolean;
+  reorder: (tabId: string, beforeId: string) => void;
+  rename: (tabId: string, title: string) => void;
   createGroup: (tabId: string) => void;
   joinGroup: (tabId: string, groupId: string) => void;
   pair: (tabId: string, otherId: string) => void;
@@ -64,6 +69,7 @@ function blank(partial: Partial<LabTab> = {}): LabTab {
     marks: null,
     hidden: false,
     groupId: null,
+    section: "estudo",
     ...partial,
     id: partial.id ?? crypto.randomUUID(),
   };
@@ -120,6 +126,23 @@ export const useLab = create<Lab>((set, get) => ({
     set({ tabs: [...state.tabs, tab], activeId: tab.id, note: "" });
     return true;
   },
+  reorder: (tabId, beforeId) =>
+    set((s) => {
+      if (tabId === beforeId) return s;
+      const moving = s.tabs.find((tab) => tab.id === tabId);
+      const target = s.tabs.find((tab) => tab.id === beforeId);
+      if (!moving || !target) return s;
+      const rest = s.tabs.filter((tab) => tab.id !== tabId);
+      const index = rest.findIndex((tab) => tab.id === beforeId);
+      const next = { ...moving, groupId: moving.groupId === target.groupId ? moving.groupId : null };
+      const tabs = [...rest];
+      tabs.splice(Math.max(0, index), 0, next);
+      return { tabs, groups: prune(s.groups, tabs) };
+    }),
+  rename: (tabId, title) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => (tab.id === tabId ? { ...tab, title: title.trim().slice(0, 32) || tab.title } : tab)),
+    })),
   createGroup: (tabId) =>
     set((s) => {
       const color = COLORS[s.groups.length % COLORS.length]!;

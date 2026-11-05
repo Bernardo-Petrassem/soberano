@@ -9,6 +9,7 @@ import { Board } from "@/components/chess/board";
 import { LiveGame } from "@/components/chess/live-game";
 import { PuzzleRun } from "@/components/chess/puzzle-run";
 import { StrengthField } from "@/components/chess/strength-field";
+import { EndgameCard, PerfectDrill } from "@/components/chess/endgame-setup";
 import { formatWatch, useStopwatch } from "@/components/chess/stopwatch";
 import { corpus, EMPTY_OPENING_FILTER, matchOpening, openingFilterActive, openingPasses, type Opening, type OpeningFilterValue, type Puzzle } from "@/lib/chess/corpus";
 import { generateEndgame, generateRandomEndgame, type EndgameId } from "@/lib/chess/endgames";
@@ -69,16 +70,16 @@ function Treino() {
   const [page, setPage] = useState(0);
   const [openRoot, setOpenRoot] = useState("");
   const [preview, setPreview] = useState<Opening | null>(null);
-  const [endQueue, setEndQueue] = useState<DrillId[]>((saved?.endgames ?? []) as DrillId[]);
   const [focus, setFocus] = useState<DrillId | "">((saved?.endgames?.[0] as DrillId | undefined) ?? "");
   const [pieces, setPieces] = useState("6");
   const [side, setSide] = useState<Color>(saved?.color ?? "white");
   const [elo, setElo] = useState(saved?.elo ?? 1200);
   const [solo, setSolo] = useState(false);
   const [session, setSession] = useState<null | { opening: Opening; kind: "line" | "practice" | "card" }>(null);
-  const [endAt, setEndAt] = useState(0);
-  const [endOn, setEndOn] = useState(false);
   const [fen, setFen] = useState<string | null>(null);
+  const [endOn, setEndOn] = useState(false);
+  const [setup, setSetup] = useState(false);
+  const [perfectOn, setPerfectOn] = useState(false);
   const [spin, setSpin] = useState(0);
 
   useEffect(() => {
@@ -113,10 +114,6 @@ function Treino() {
   const pageCount = Math.max(1, Math.ceil(roots.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   const windowed = roots.slice(safePage * pageSize, safePage * pageSize + pageSize);
-
-  function persist() {
-    saveDrill({ openings: [], endgames: endQueue, elo, color: side });
-  }
 
   function backToList() {
     setSession(null);
@@ -248,32 +245,57 @@ function Treino() {
         </div>
       )}
 
-      {tab === "finais" && endOn && fen && (
+      {tab === "finais" && perfectOn && fen && focus && (
+        <div className="mt-4">
+          <PerfectDrill
+            fen={fen}
+            side={side}
+            endgameId={focus}
+            name={focus === "random" ? "Final aleatório" : (ENDGAMES.find((e) => e.id === focus)?.name ?? "Final")}
+            onExit={() => setPerfectOn(false)}
+          />
+        </div>
+      )}
+
+      {tab === "finais" && endOn && !perfectOn && fen && focus && (
         <EndgamePlay
-          id={(endQueue[endAt] || ENDGAMES[0]!.id) as DrillId}
+          id={focus}
           fen={fen}
           elo={elo}
           side={side}
           solo={solo}
           spin={spin}
-          hasNext={endAt < endQueue.length - 1}
+          hasNext={false}
           onStop={() => setEndOn(false)}
           onAgain={() => setSpin((n) => n + 1)}
           onFresh={() => {
-            const current = (endQueue[endAt] || "pp") as DrillId;
-            setFen(current === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(current));
+            setFen(focus === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(focus));
             setSpin((n) => n + 1);
           }}
-          onNext={() => {
-            const next = endAt + 1;
-            setEndAt(next);
-            setFen(endQueue[next] === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(endQueue[next] as EndgameId));
-            setSpin((n) => n + 1);
-          }}
+          onNext={() => undefined}
         />
       )}
 
-      {tab === "finais" && !endOn && (
+      {tab === "finais" && setup && !endOn && !perfectOn && focus && (
+        <div className="mt-4">
+          <EndgameCard
+            title={focus === "random" ? "Final aleatório" : (ENDGAMES.find((e) => e.id === focus)?.name ?? "Final")}
+            goal={focus === "random" ? "Uma posição nova. O objetivo é calcular, não decorar." : (ENDGAMES.find((e) => e.id === focus)?.goal ?? "")}
+            onBack={() => setSetup(false)}
+            onStart={(choice) => {
+              setElo(choice.elo);
+              setSide(choice.side);
+              setSolo(choice.local);
+              saveDrill({ openings: [], endgames: [focus], elo: choice.elo, color: choice.side });
+              setSetup(false);
+              if (choice.perfect) setPerfectOn(true);
+              else setEndOn(true);
+            }}
+          />
+        </div>
+      )}
+
+      {tab === "finais" && !endOn && !setup && !perfectOn && (
         <div className="mt-4 grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <Panel>
             <ul className="space-y-1 text-sm">
@@ -286,97 +308,51 @@ function Treino() {
                       const id = e.id as EndgameId;
                       setFocus(id);
                       setFen(generateEndgame(id));
-                      setEndQueue((q) => (q.includes(id) ? q : [...q, id]));
                     }}
                   >
                     {e.name}
                   </button>
                 </li>
               ))}
+              <li>
+                <button
+                  type="button"
+                  className={`w-full rounded-lg px-2 py-2 text-left hover:bg-panel-2 ${focus === "random" ? "bg-panel-2 text-brass" : ""}`}
+                  onClick={() => {
+                    const n = Math.max(3, Math.min(12, Number(pieces) || 6));
+                    setPieces(String(n));
+                    setFocus("random");
+                    setFen(generateRandomEndgame(n));
+                  }}
+                >
+                  Final aleatório
+                </button>
+              </li>
             </ul>
           </Panel>
           <Panel>
-            <h2 className="font-display text-2xl">Fila de finais</h2>
-            {fen && <div className="mt-3"><Board fen={fen} orientation={side} /></div>}
-            {endQueue.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">Escolha um final para o pré-visualizar.</p>
-            ) : (
-              <ul className="mt-3 space-y-1 text-sm">
-                {endQueue.map((id) => {
-                  const item = ENDGAMES.find((e) => e.id === id);
-                  return (
-                    <li key={id} className="flex items-center justify-between gap-2">
-                      <span>{item?.name ?? id}</span>
-                      <button type="button" className="text-muted" onClick={() => setEndQueue((q) => q.filter((x) => x !== id))}>
-                        Tirar
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+            <h2 className="font-display text-2xl">{focus === "random" ? "Final aleatório" : (ENDGAMES.find((e) => e.id === focus)?.name ?? "Finais")}</h2>
+            {fen && focus ? <div className="mt-3"><Board fen={fen} /></div> : <p className="mt-3 text-sm text-muted">Escolha um final.</p>}
+            {focus && focus !== "random" && <p className="mt-3 text-sm text-muted">{ENDGAMES.find((e) => e.id === focus)?.goal}</p>}
+            {focus === "random" && (
+              <label className="mt-3 block text-sm text-muted">
+                Peças
+                <input
+                  className="field no-spin mt-1 max-w-28"
+                  inputMode="numeric"
+                  value={pieces}
+                  onChange={(e) => setPieces(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
+                  onBlur={() => {
+                    const n = Math.max(3, Math.min(12, Number(pieces) || 6));
+                    setPieces(String(n));
+                    setFen(generateRandomEndgame(n));
+                  }}
+                />
+              </label>
             )}
-            <p className="mt-3 text-sm text-muted">{ENDGAMES.find((e) => e.id === endQueue.at(-1))?.goal}</p>
-            <label className="mt-3 block text-sm text-muted">
-              Peças no final aleatório
-              <input
-                className="field no-spin mt-1 max-w-28"
-                inputMode="numeric"
-                value={pieces}
-                onChange={(e) => setPieces(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
-                onBlur={() => setPieces(String(Math.max(3, Math.min(12, Number(pieces) || 6))))}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn mt-2"
-              onClick={() => {
-                const n = Math.max(3, Math.min(12, Number(pieces) || 6));
-                setPieces(String(n));
-                setFocus("random");
-                setFen(generateRandomEndgame(n));
-                setEndQueue((q) => (q.includes("random") ? q : [...q, "random"]));
-              }}
-            >
-              Gerar final aleatório
+            <button type="button" className="btn btn-primary mt-4" disabled={!focus || !fen} onClick={() => setSetup(true)}>
+              Jogar esse final
             </button>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button type="button" className={side === "white" ? "btn btn-primary" : "btn"} onClick={() => setSide("white")}>
-                Brancas
-              </button>
-              <button type="button" className={side === "black" ? "btn btn-primary" : "btn"} onClick={() => setSide("black")}>
-                Pretas
-              </button>
-            </div>
-            <div className="mt-3">
-              <StrengthField elo={elo} onChange={setElo} />
-            </div>
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={solo} onChange={(e) => setSolo(e.target.checked)} />
-              Sozinho, sem motor
-            </label>
-            <p className="mt-2 text-xs text-muted">Com as pretas, o motor erra de propósito. Quanto maior o elo, mais fino é o erro. O peão passado não se promove sozinho.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" className="btn" onClick={persist}>
-                Guardar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!endQueue.length}
-                onClick={() => {
-                  const chosen = (focus || endQueue[0]) as DrillId;
-                  const queue = endQueue.includes(chosen) ? endQueue : [chosen, ...endQueue];
-                  const at = Math.max(0, queue.indexOf(chosen));
-                  setEndQueue(queue);
-                  setEndAt(at);
-                  setFen(chosen === "random" ? generateRandomEndgame(Number(pieces) || 6) : generateEndgame(chosen));
-                  setEndOn(true);
-                  setSpin(0);
-                }}
-              >
-                Começar ({endQueue.length})
-              </button>
-            </div>
           </Panel>
         </div>
       )}

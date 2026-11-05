@@ -11,9 +11,11 @@ import { LiveGame } from "@/components/chess/live-game";
 import { EndgameLab } from "@/components/chess/endgame-lab";
 import { Repertoire } from "@/components/chess/repertoire";
 import { StrengthField } from "@/components/chess/strength-field";
+import { ShareButton } from "@/components/chess/share-sheet";
+import { StudyMenu } from "@/components/chess/study-menu";
 import { TabStrip } from "@/components/chess/tab-strip";
 import { cpOf, Engine, type GoResult } from "@/lib/chess/engine";
-import { useLab } from "@/lib/chess/lab";
+import { useLab, type LabSection } from "@/lib/chess/lab";
 import {
   checkedKing,
   destsOf,
@@ -82,6 +84,8 @@ function MoveList({
   );
 }
 
+const CLEAR_FEN = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
+
 const TOOLS: { color: Color; role: Role; label: string }[] = [
   { color: "white", role: "king", label: "R" },
   { color: "white", role: "queen", label: "D" },
@@ -136,16 +140,17 @@ function Analise() {
   const activeId = useLab((s) => s.activeId);
   const note = useLab((s) => s.note);
   const focus = useLab((s) => s.focus);
+  const setFocus = useLab((s) => s.setFocus);
   const patch = useLab((s) => s.patch);
   const setNote = useLab((s) => s.setNote);
   const tab = tabs.find((item) => item.id === activeId) ?? tabs[0]!;
+  const section: LabSection = tab.section ?? "estudo";
   const [tool, setTool] = useState<{ color: Color; role: Role } | "erase" | null>(null);
   const [engineOn, setEngineOn] = useState(false);
   const [lines, setLines] = useState<GoResult | null>(null);
   const [whiteCp, setWhiteCp] = useState(0);
   const [names, setNames] = useState<{ eco: string; name: string }[]>([]);
   const [progress, setProgress] = useState("");
-  const [section, setSection] = useState<"estudo" | "aberturas" | "finais">("estudo");
   const [train, setTrain] = useState(false);
   const [local, setLocal] = useState(false);
   const [elo, setElo] = useState(1200);
@@ -154,20 +159,24 @@ function Analise() {
   const [hintOn, setHintOn] = useState(false);
   const [hintArrow, setHintArrow] = useState<[string, string] | null>(null);
   const [round, setRound] = useState(0);
-  const [copied, setCopied] = useState(false);
+  const [orientation, setOrientation] = useState<Color>("white");
+  const [undoClear, setUndoClear] = useState<Record<string, { fen: string; draft: string; pgn: string; sans: string[]; ucis: string[]; cursor: number; marks: Mark[] | null }>>({});
   const cache = useRef(new Map<string, GoResult>());
+  const fenSnap = useRef("");
+  const pgnSnap = useRef("");
 
   const pos = useMemo(() => positionAt(tab.fen, tab.ucis, tab.cursor), [tab.fen, tab.ucis, tab.cursor]);
   const view = pos ? fenOf(pos) : tab.fen;
 
   useEffect(() => {
-    if (focus || !view || (!engineOn && !hintOn)) {
+    const full = engineOn && !focus;
+    if (!view || (!full && !hintOn)) {
       setHintArrow(null);
       return;
     }
-    const key = `${view}:${engineOn ? "full" : "hint"}`;
+    const key = `${view}:${full ? "full" : "hint"}`;
     const apply = (res: GoResult) => {
-      if (engineOn) setLines(res);
+      if (full) setLines(res);
       const side = view.split(" ")[1] === "b" ? "black" : "white";
       const cp = cpOf(res);
       const white = side === "white" ? cp : -cp;
@@ -189,14 +198,14 @@ function Analise() {
     let cancel = false;
     const timer = window.setTimeout(() => {
       void Engine.shared()
-        .go(view, { movetime: engineOn ? 220 : 70, multipv: engineOn ? 3 : 1, skill: 20, elo: null })
+        .go(view, { movetime: full ? 220 : 70, multipv: full ? 3 : 1, skill: 20, elo: null })
         .then((res) => {
           if (cancel) return;
           cache.current.set(key, res);
           apply(res);
         })
         .catch(() => {
-          if (!cancel && engineOn) setNote("Motor indisponível.");
+          if (!cancel && full) setNote("Motor indisponível.");
         });
     }, 140);
     return () => {
@@ -208,6 +217,55 @@ function Analise() {
   useEffect(() => {
     void corpus().then((c) => setNames(c.namesAt(view)));
   }, [view]);
+
+  const cleared = Boolean(undoClear[tab.id] && tab.fen === CLEAR_FEN && tab.ucis.length === 0);
+
+  function clearBoard() {
+    setUndoClear((saved) => ({
+      ...saved,
+      [tab.id]: { fen: tab.fen, draft: tab.draft, pgn: tab.pgn, sans: tab.sans, ucis: tab.ucis, cursor: tab.cursor, marks: tab.marks },
+    }));
+    patch(tab.id, { fen: CLEAR_FEN, draft: CLEAR_FEN, pgn: "", sans: [], ucis: [], cursor: 0, marks: null });
+    setTrain(false);
+  }
+
+  function undoBoard() {
+    const saved = undoClear[tab.id];
+    if (!saved) return;
+    patch(tab.id, saved);
+    setUndoClear((all) => {
+      const next = { ...all };
+      delete next[tab.id];
+      return next;
+    });
+  }
+
+  function toggleClear() {
+    if (cleared) undoBoard();
+    else clearBoard();
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.querySelector("[role='dialog']")) return;
+      const key = e.key.toLowerCase();
+      if (key === "s") {
+        e.preventDefault();
+        setHintOn((v) => !v);
+      } else if (key === "f") {
+        e.preventDefault();
+        setOrientation((side) => (side === "white" ? "black" : "white"));
+      } else if (key === "l") {
+        e.preventDefault();
+        toggleClear();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   function applyFen(next: string) {
     patch(tab.id, { fen: next, draft: next, ucis: [], sans: [], cursor: 0, marks: null, pgn: next });
@@ -240,6 +298,23 @@ function Analise() {
     setTrain(false);
     setNote(nextUcis.length ? "Partida no tabuleiro. Recue um lance de cada vez." : "PGN sem lances jogáveis.");
   }
+
+  const endPos = positionAt(tab.fen, tab.ucis, tab.ucis.length);
+  const fenFinal = endPos ? fenOf(endPos) : tab.fen;
+  const pgnAll = toPgn({ startFen: tab.fen, sans: tab.sans, white: "Brancas", black: "Pretas", result: "*", event: "Análise" });
+  const pgnNow = toPgn({ startFen: tab.fen, sans: tab.sans.slice(0, tab.cursor), white: "Brancas", black: "Pretas", result: "*", event: "Análise" });
+  const menu = (
+    <StudyMenu
+      clean={focus}
+      onClean={setFocus}
+      canUndo={cleared}
+      onClear={clearBoard}
+      onUndo={undoBoard}
+      onFlip={() => setOrientation((side) => (side === "white" ? "black" : "white"))}
+      hintOn={hintOn}
+      onHint={() => setHintOn((v) => !v)}
+    />
+  );
 
   if (train && pos) {
     const tuned = eloToEngine(elo);
@@ -274,23 +349,31 @@ function Analise() {
 
   return (
     <Shell bare={focus}>
-      <TabStrip />
+      <div className={focus ? "" : "flex items-start gap-3"}>
+        {!focus && (
+          <nav className="sticky top-16 flex w-20 shrink-0 flex-col gap-1 sm:w-32" aria-label="Seções">
+            {(
+              [
+                ["estudo", "Estudo"],
+                ["aberturas", "Aberturas"],
+                ["finais", "Finais"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={section === id}
+                className={`min-h-11 rounded-xl border px-2 py-2 text-left text-sm ${section === id ? "border-brass bg-panel text-ink" : "border-transparent text-muted"}`}
+                onClick={() => patch(tab.id, { section: id })}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
+        <div className="min-w-0 flex-1">
+      <TabStrip menu={menu} />
       {!focus && note && <p className="mt-3 text-sm text-blood">{note}</p>}
-      {!focus && (
-      <div className="seg mt-4">
-        {(
-          [
-            ["estudo", "Estudo"],
-            ["aberturas", "Aberturas"],
-            ["finais", "Finais"],
-          ] as const
-        ).map(([id, label]) => (
-          <button key={id} type="button" aria-pressed={section === id} onClick={() => setSection(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      )}
       {!focus && section === "aberturas" && <div className="mt-4"><Repertoire /></div>}
       {!focus && section === "finais" && <div className="mt-4"><EndgameLab /></div>}
       {(focus || section === "estudo") && (
@@ -302,13 +385,14 @@ function Analise() {
                 <div className="min-w-0 flex-1">
                   <Board
                     fen={fenOf(pos)}
+                    orientation={orientation}
                     dests={tool && !focus ? {} : destsOf(pos)}
                     lastMove={lastSquares(tab.ucis[tab.cursor - 1])}
                     checkSquare={checkedKing(pos)}
                     interactive
                     sideToMove={pos.turn}
                     editRole={focus ? null : tool}
-                    hintArrow={!focus && hintOn ? hintArrow : null}
+                    hintArrow={hintOn ? hintArrow : null}
                     isPromotion={(from, to) => needsPromotion(pos, from, to)}
                     onEdit={(square) => {
                       if (!tool || focus) return;
@@ -407,6 +491,8 @@ function Analise() {
                 placeholder="Cole um PGN ou um FEN"
                 value={tab.pgn}
                 onChange={(e) => patch(tab.id, { pgn: e.target.value })}
+                onFocus={() => { pgnSnap.current = tab.pgn; }}
+                onBlur={() => { if (tab.pgn !== pgnSnap.current) ingest(tab.pgn); }}
                 onPaste={(e) => {
                   const text = e.clipboardData.getData("text");
                   if (!text.trim()) return;
@@ -414,13 +500,12 @@ function Analise() {
                   ingest(text);
                 }}
               />
-              <button type="button" className="btn mt-2" onClick={() => ingest(tab.pgn)}>
-                Abrir PGN
-              </button>
               <input
                 className="field mt-3"
                 value={tab.draft}
                 onChange={(e) => patch(tab.id, { draft: e.target.value })}
+                onFocus={() => { fenSnap.current = tab.draft; }}
+                onBlur={() => { if (tab.draft !== fenSnap.current) ingest(tab.draft); }}
                 onPaste={(e) => {
                   const text = e.clipboardData.getData("text");
                   if (!text.trim()) return;
@@ -429,29 +514,7 @@ function Analise() {
                 }}
                 aria-label="FEN"
               />
-              <button type="button" className="btn mt-2" onClick={() => ingest(tab.draft)}>
-                Posição FEN
-              </button>
-              <button
-                type="button"
-                className="btn mt-2"
-                onClick={() => {
-                  const text = toPgn({
-                    startFen: tab.fen,
-                    sans: tab.sans,
-                    white: "Brancas",
-                    black: "Pretas",
-                    result: "*",
-                    event: "Análise",
-                  });
-                  void navigator.clipboard.writeText(text).then(() => {
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1500);
-                  });
-                }}
-              >
-                {copied ? "PGN copiado" : "Copiar PGN"}
-              </button>
+              <ShareButton fen={view} fenFinal={fenFinal} pgnNow={pgnNow} pgnAll={pgnAll} />
               {names.length > 0 && <p className="mt-3 text-sm text-brass">{names.map((n) => `${n.eco} ${n.name}`).join(" · ")}</p>}
             </Panel>
             <Panel>
@@ -531,6 +594,8 @@ function Analise() {
           )}
         </div>
       )}
+        </div>
+      </div>
     </Shell>
   );
 }

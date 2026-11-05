@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLab, type GroupColor, type LabGroup, type LabTab } from "@/lib/chess/lab";
 
 const COLORS: GroupColor[] = ["brass", "felt", "blood", "good"];
@@ -27,25 +27,51 @@ function chunks(tabs: LabTab[], groups: LabGroup[]) {
   return out;
 }
 
-function TabButton({ tab, active }: { tab: LabTab; active: boolean }) {
+function TabButton({ tab, active, renaming, onRename }: { tab: LabTab; active: boolean; renaming: boolean; onRename: (id: string | null) => void }) {
   const activate = useLab((s) => s.activate);
   const close = useLab((s) => s.close);
-  const pair = useLab((s) => s.pair);
+  const reorder = useLab((s) => s.reorder);
+  const rename = useLab((s) => s.rename);
+  const [value, setValue] = useState(tab.title);
+  useEffect(() => setValue(tab.title), [tab.title]);
   return (
     <div
       className={active ? "tab is-active" : "tab"}
-      draggable
+      draggable={!renaming}
       onDragStart={(e) => e.dataTransfer.setData("text/tab", tab.id)}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         const id = e.dataTransfer.getData("text/tab");
-        if (id) pair(id, tab.id);
+        if (id) reorder(id, tab.id);
       }}
     >
-      <button type="button" className="tab-label" onClick={() => activate(tab.id)}>
-        {tab.title}
-      </button>
+      {renaming ? (
+        <input
+          className="tab-label w-28 bg-transparent"
+          autoFocus
+          aria-label="Nome da aba"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => {
+            rename(tab.id, value);
+            onRename(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+            if (e.key === "Escape") {
+              setValue(tab.title);
+              onRename(null);
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <button type="button" className="tab-label" onClick={() => activate(tab.id)} onDoubleClick={() => onRename(tab.id)}>
+          {tab.title}
+        </button>
+      )}
       <button type="button" className="tab-x" aria-label={`Fechar ${tab.title}`} onClick={() => close(tab.id)}>
         ×
       </button>
@@ -53,12 +79,11 @@ function TabButton({ tab, active }: { tab: LabTab; active: boolean }) {
   );
 }
 
-export function TabStrip() {
+export function TabStrip({ menu }: { menu?: ReactNode }) {
   const tabs = useLab((s) => s.tabs);
   const groups = useLab((s) => s.groups);
   const activeId = useLab((s) => s.activeId);
   const focus = useLab((s) => s.focus);
-  const setFocus = useLab((s) => s.setFocus);
   const addBoard = useLab((s) => s.addBoard);
   const createGroup = useLab((s) => s.createGroup);
   const joinGroup = useLab((s) => s.joinGroup);
@@ -68,43 +93,36 @@ export function TabStrip() {
   const paintGroup = useLab((s) => s.paintGroup);
   const dissolveGroup = useLab((s) => s.dissolveGroup);
   const closeGroup = useLab((s) => s.closeGroup);
-  const [menu, setMenu] = useState<Menu | null>(null);
+  const [menuPos, setMenuPos] = useState<Menu | null>(null);
   const [draft, setDraft] = useState("");
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
+    if (!menuPos) return;
+    const close = () => setMenuPos(null);
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
-  }, [menu]);
+  }, [menuPos]);
 
-  const open = menu?.kind === "group" ? groups.find((group) => group.id === menu.id) : null;
+  const open = menuPos?.kind === "group" ? groups.find((group) => group.id === menuPos.id) : null;
 
-  if (focus) {
-    return (
-      <button type="button" className="btn" onClick={() => setFocus(false)}>
-        Mostrar tudo
-      </button>
-    );
-  }
+  if (focus) return <div>{menu}</div>;
 
   return (
     <div>
       <div className="tab-bar">
-      <button type="button" className="btn shrink-0" onClick={() => setFocus(true)}>
-        Só o tabuleiro
-      </button>
-      <div className="tab-strip" onDragOver={(e) => e.preventDefault()}>
+        {menu}
+        <div className="tab-strip" onDragOver={(e) => e.preventDefault()}>
           {chunks(tabs, groups).map((chunk) =>
             chunk.kind === "tab" ? (
               <div
                 key={chunk.tab.id}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  setMenu({ kind: "tab", id: chunk.tab.id, x: e.clientX, y: e.clientY });
+                  setMenuPos({ kind: "tab", id: chunk.tab.id, x: e.clientX, y: e.clientY });
                 }}
               >
-                <TabButton tab={chunk.tab} active={chunk.tab.id === activeId} />
+                <TabButton tab={chunk.tab} active={chunk.tab.id === activeId} renaming={renaming === chunk.tab.id} onRename={setRenaming} />
               </div>
             ) : (
               <div
@@ -125,7 +143,7 @@ export function TabStrip() {
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setDraft(chunk.group.name);
-                    setMenu({ kind: "group", id: chunk.group.id, x: e.clientX, y: e.clientY });
+                    setMenuPos({ kind: "group", id: chunk.group.id, x: e.clientX, y: e.clientY });
                   }}
                 >
                   <span className={`tab-dot is-${chunk.group.color}`} />
@@ -138,10 +156,10 @@ export function TabStrip() {
                       key={tab.id}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        setMenu({ kind: "tab", id: tab.id, x: e.clientX, y: e.clientY });
+                        setMenuPos({ kind: "tab", id: tab.id, x: e.clientX, y: e.clientY });
                       }}
                     >
-                      <TabButton tab={tab} active={tab.id === activeId} />
+                      <TabButton tab={tab} active={tab.id === activeId} renaming={renaming === tab.id} onRename={setRenaming} />
                     </div>
                   ))}
               </div>
@@ -152,19 +170,22 @@ export function TabStrip() {
           </button>
         </div>
       </div>
-      {menu && (
-        <div className="tab-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          {menu.kind === "tab" ? (
+      {menuPos && (
+        <div className="tab-menu" style={{ left: menuPos.x, top: menuPos.y }} onClick={(e) => e.stopPropagation()}>
+          {menuPos.kind === "tab" ? (
             <>
-              <button type="button" className="tab-menu-item" onClick={() => { createGroup(menu.id); setMenu(null); }}>
+              <button type="button" className="tab-menu-item" onClick={() => { setRenaming(menuPos.id); setMenuPos(null); }}>
+                Renomear
+              </button>
+              <button type="button" className="tab-menu-item" onClick={() => { createGroup(menuPos.id); setMenuPos(null); }}>
                 Novo grupo
               </button>
               {groups.map((group) => (
-                <button key={group.id} type="button" className="tab-menu-item" onClick={() => { joinGroup(menu.id, group.id); setMenu(null); }}>
+                <button key={group.id} type="button" className="tab-menu-item" onClick={() => { joinGroup(menuPos.id, group.id); setMenuPos(null); }}>
                   Adicionar a {group.name}
                 </button>
               ))}
-              <button type="button" className="tab-menu-item" onClick={() => { ungroup(menu.id); setMenu(null); }}>
+              <button type="button" className="tab-menu-item" onClick={() => { ungroup(menuPos.id); setMenuPos(null); }}>
                 Tirar do grupo
               </button>
             </>
@@ -180,10 +201,10 @@ export function TabStrip() {
                     <button key={color} type="button" className={`tab-dot is-${color} tab-swatch`} aria-label={color} onClick={() => paintGroup(open.id, color)} />
                   ))}
                 </div>
-                <button type="button" className="tab-menu-item mt-2" onClick={() => { dissolveGroup(open.id); setMenu(null); }}>
+                <button type="button" className="tab-menu-item mt-2" onClick={() => { dissolveGroup(open.id); setMenuPos(null); }}>
                   Desagrupar
                 </button>
-                <button type="button" className="tab-menu-item" onClick={() => { closeGroup(open.id); setMenu(null); }}>
+                <button type="button" className="tab-menu-item" onClick={() => { closeGroup(open.id); setMenuPos(null); }}>
                   Fechar grupo
                 </button>
               </>
@@ -191,7 +212,7 @@ export function TabStrip() {
           )}
         </div>
       )}
-      <p className="mt-2 text-xs text-muted">Botão direito numa aba para a agrupar. Clique no nome do grupo para o recolher. Arraste uma aba para outra para as juntar.</p>
+      <p className="mt-2 text-xs text-muted">Arraste com o botão esquerdo para mudar a ordem. Duplo clique, ou o botão direito, nomeia a aba. O botão direito também agrupa.</p>
     </div>
   );
 }

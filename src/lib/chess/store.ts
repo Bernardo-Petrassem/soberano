@@ -54,6 +54,22 @@ export type RepCard = {
   reps: number;
 };
 
+export type PerfectRecord = { name: string; moves: number; solved: boolean; at: string };
+
+export type PerfectAttempt = {
+  id: string;
+  endgameId: string;
+  name: string;
+  fen: string;
+  side: "white" | "black";
+  played: string[];
+  best: string[];
+  ok: boolean;
+  moves: number;
+  at: string;
+  missBest?: string;
+};
+
 export type DrillSave = {
   openings: { eco: string; family: string; name: string; moves: string }[];
   endgames: string[];
@@ -74,6 +90,8 @@ type Vault = {
   drill: DrillSave | null;
   repertoire: RepCard[];
   endgameBest: Record<string, number>;
+  perfect: Record<string, PerfectRecord>;
+  perfectAttempts: PerfectAttempt[];
   setName: (name: string) => void;
   ensureId: () => string;
   setRating: (rating: number) => void;
@@ -91,6 +109,8 @@ type Vault = {
   gradeCard: (id: string, ok: boolean) => void;
   removeCard: (id: string) => void;
   setEndgameBest: (id: string, pct: number) => void;
+  setPerfectRecord: (id: string, name: string, moves: number, solved: boolean) => void;
+  logPerfect: (attempt: PerfectAttempt) => void;
 };
 
 export function displayName(raw: string | undefined, fallback = "Jogador"): string {
@@ -137,6 +157,8 @@ export const useVault = create<Vault>()(
       drill: null,
       repertoire: [],
       endgameBest: {},
+      perfect: {},
+      perfectAttempts: [],
       setName: (name) => set({ name: displayName(name) }),
       ensureId: () => {
         const id = get().peerId || makeId();
@@ -204,6 +226,14 @@ export const useVault = create<Vault>()(
       removeCard: (id) => set((s) => ({ repertoire: s.repertoire.filter((c) => c.id !== id) })),
       setEndgameBest: (id, pct) =>
         set((s) => ({ endgameBest: { ...s.endgameBest, [id]: Math.max(s.endgameBest[id] ?? 0, Math.round(pct)) } })),
+      setPerfectRecord: (id, name, moves, solved) =>
+        set((s) => {
+          const prev = s.perfect[id];
+          const better = !prev || (solved && !prev.solved) || (solved === prev.solved && moves >= prev.moves);
+          if (!better) return s;
+          return { perfect: { ...s.perfect, [id]: { name, moves, solved, at: new Date().toISOString() } } };
+        }),
+      logPerfect: (attempt) => set((s) => ({ perfectAttempts: [attempt, ...s.perfectAttempts].slice(0, 40) })),
     }),
     {
       name: "soberano-vault",
@@ -221,6 +251,8 @@ export const useVault = create<Vault>()(
         drill: s.drill,
         repertoire: s.repertoire,
         endgameBest: s.endgameBest,
+        perfect: s.perfect,
+        perfectAttempts: s.perfectAttempts,
       }),
     },
   ),

@@ -82,6 +82,7 @@ export function Evolution({ onOpen }: { onOpen: (id: string) => void }) {
   const ratingLog = useVault((s) => s.ratingLog);
   const rating = useVault((s) => s.rating);
   const setRating = useVault((s) => s.setRating);
+  const perfect = useVault((s) => s.perfect);
   const dates = [
     ...games.map((g) => Date.parse(g.date)),
     ...ratingLog.map((p) => Date.parse(p.at)),
@@ -175,6 +176,21 @@ export function Evolution({ onOpen }: { onOpen: (id: string) => void }) {
                 <span className="text-muted">
                   {row.w} vitórias · {row.d} empates · {row.l} derrotas
                 </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+      <Panel>
+        <h2 className="font-display text-2xl">Final Perfeito</h2>
+        {Object.keys(perfect).length === 0 ? (
+          <p className="mt-2 text-sm text-muted">Sem informação</p>
+        ) : (
+          <ul className="mt-3 space-y-2 text-sm">
+            {Object.entries(perfect).map(([id, row]) => (
+              <li key={id} className="flex flex-wrap items-center justify-between gap-2">
+                <span>{row.name}</span>
+                <span className="text-muted">{row.solved ? "Final perfeito" : `${row.moves} lances perfeitos`}</span>
               </li>
             ))}
           </ul>
